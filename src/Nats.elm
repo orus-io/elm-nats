@@ -1,6 +1,25 @@
-module Nats exposing (..)
+module Nats
+    exposing
+        ( State
+        , Subscription
+        , Msg
+        , NatsMessage
+        , init
+        , update
+        , listen
+        , publish
+        , subscribe
+        )
 
-{-| @docs init
+{-| This library provides a pure elm implementation of the NATS client
+protocol on top of WebSocket.
+
+The NATS server does not support websocket natively, so a NATS/websocket
+proxy must be used. The only compatible one is
+<https://github.com/orus-io/nats-websocket-gw>
+
+@docs State, Subscription , Msg , NatsMessage , init , update , listen , publish , subscribe
+
 -}
 
 import WebSocket
@@ -23,6 +42,8 @@ import Regex exposing (Regex)
 -}
 
 
+{-| A message sent to or received from the nats server
+-}
 type alias NatsMessage =
     { subject : String
     , sid : String
@@ -43,11 +64,16 @@ type Command
     | Err String
 
 
+{-| Type of message the update function takes
+-}
 type Msg
     = Receive Command
     | KeepAlive Time.Time
 
 
+{-| A NATS subscription that can be stored in any component model using
+subscriptions.
+-}
 type Subscription msg
     = Subscription (NatsMessage -> msg) String
 
@@ -59,6 +85,8 @@ type alias SubscriptionState =
     }
 
 
+{-| The NATS state to add to the application model (once)
+-}
 type alias State =
     { url : String
     , keepAlive : Time.Time
@@ -163,6 +191,11 @@ receive state convert subscriptions command =
             convert <| Receive command
 
 
+{-| Creates a Sub for the whole applications
+It takes a list of all the active subscriptions from all the application
+parts, which are used to translate the WebSocket message into the message
+type each component need.
+-}
 listen : State -> (Msg -> msg) -> List (Subscription msg) -> Sub msg
 listen state convert subscriptions =
     let
@@ -185,6 +218,8 @@ listen state convert subscriptions =
             ]
 
 
+{-| Initialize a Nats State for a given websocket URL
+-}
 init : String -> State
 init url =
     { url = url
@@ -250,6 +285,10 @@ send state cmd =
     cmdToString cmd |> WebSocket.send state.url
 
 
+{-| The update function
+Will make sure PING commands from the server are honored with a PONG,
+and send a PING to keep the connection alive.
+-}
 update : Msg -> State -> ( State, Cmd Msg )
 update msg state =
     case msg of
@@ -281,6 +320,9 @@ initQueueSubscription subject queueGroup sid =
     }
 
 
+{-| Initialize a Subscription for the given subject
+It takes the State and returns it modified.
+-}
 subscribe : State -> String -> (NatsMessage -> msg) -> ( Subscription msg, State, Cmd Msg )
 subscribe state subject translate =
     let
@@ -297,6 +339,8 @@ subscribe state subject translate =
         )
 
 
+{-| Publish a message on a subject
+-}
 publish : State -> String -> String -> Cmd Msg
 publish state subject payload =
     send state <|
