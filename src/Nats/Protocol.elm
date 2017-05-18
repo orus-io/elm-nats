@@ -94,7 +94,7 @@ type
 
 messageRe : Regex
 messageRe =
-    Regex.regex "^MSG ([a-zA-Z0-9.]+) ([a-zA-Z0-9]+)( [a-zA-Z0-9.]+)? [0-9]+\\r\\n(.*)\\r\\n$"
+    Regex.regex "^MSG ([a-zA-Z0-9.]+) ([a-zA-Z0-9]+)( [a-zA-Z0-9.]+)? [0-9]+\\r\\n(.*)$"
 
 
 matchMessage : String -> Result String (List (Maybe String))
@@ -160,27 +160,27 @@ parseOperation str =
                 str
     in
         case stripped of
-            "PING\x0D\n" ->
+            "PING" ->
                 Ok PING
 
-            "PONG\x0D\n" ->
+            "PONG" ->
                 Ok PONG
 
-            "+OK\x0D\n" ->
+            "+OK" ->
                 Ok OK
 
             _ ->
-                if String.startsWith "-ERR" str then
-                    Ok <| ERR <| String.dropRight 1 <| String.dropLeft 5 str
-                else if String.startsWith "MSG" str then
-                    case parseMessage str of
+                if String.startsWith "-ERR" stripped then
+                    Ok <| ERR <| String.dropRight 1 <| String.dropLeft 5 stripped
+                else if String.startsWith "MSG" stripped then
+                    case parseMessage stripped of
                         Result.Ok ( sid, message ) ->
                             Ok <| MSG sid message
 
                         Result.Err err ->
                             Err err
                 else
-                    Err <| "Invalid command '" ++ str ++ "'"
+                    Err <| "Invalid command '" ++ stripped ++ "'"
 
 
 {-| serialize an Operation (generally for sending to the server)
