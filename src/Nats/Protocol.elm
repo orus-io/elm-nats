@@ -15,6 +15,8 @@ module Nats.Protocol
 -}
 
 import Regex exposing (Regex)
+import Json.Decode as JsonD
+import Json.Decode.Pipeline as JsonDP
 
 
 {-| A NATS message
@@ -35,7 +37,7 @@ type alias ServerInfo =
     , host : String -- The IP address of the NATS server host
     , port_ : Int -- The port number the NATS server is configured to listen on
     , auth_required : Bool -- If this is set, then the client should try to authenticate upon connect.
-    , max_payload : Bool -- Maximum payload size that the server will accept from the client.
+    , max_payload : Int -- Maximum payload size that the server will accept from the client.
     }
 
 
@@ -170,7 +172,14 @@ parseOperation str =
                 Ok OK
 
             _ ->
-                if String.startsWith "-ERR" stripped then
+                if String.startsWith "INFO " stripped then
+                    case JsonD.decodeString decodeServerInfo <| String.dropLeft 5 stripped of
+                        Ok info ->
+                            Ok <| INFO info
+
+                        Err err ->
+                            Err err
+                else if String.startsWith "-ERR " stripped then
                     Ok <| ERR <| String.dropRight 1 <| String.dropLeft 5 stripped
                 else if String.startsWith "MSG" stripped then
                     case parseMessage stripped of
@@ -242,3 +251,15 @@ toString op =
             "ERR '" ++ err ++ "'"
     )
         ++ "\x0D\n"
+
+
+decodeServerInfo : JsonD.Decoder ServerInfo
+decodeServerInfo =
+    JsonDP.decode ServerInfo
+        |> JsonDP.required "server_id" JsonD.string
+        |> JsonDP.required "version" JsonD.string
+        |> JsonDP.required "go" JsonD.string
+        |> JsonDP.required "host" JsonD.string
+        |> JsonDP.required "port" JsonD.int
+        |> JsonDP.required "auth_required" JsonD.bool
+        |> JsonDP.required "max_payload" JsonD.int

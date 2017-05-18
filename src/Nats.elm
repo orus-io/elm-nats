@@ -88,6 +88,7 @@ type alias State msg =
     , keepAlive : Time.Time
     , sidCounter : Int
     , subscriptions : Dict String (Subscription msg)
+    , serverInfo : Maybe Protocol.ServerInfo
     }
 
 
@@ -134,6 +135,7 @@ init url =
     , keepAlive = 5 * Time.minute
     , sidCounter = 0
     , subscriptions = Dict.empty
+    , serverInfo = Nothing
     }
 
 
@@ -153,6 +155,9 @@ update msg state =
             case op of
                 Protocol.PING ->
                     state ! [ send state Protocol.PONG ]
+
+                Protocol.INFO serverInfo ->
+                    { state | serverInfo = Just serverInfo } ! []
 
                 _ ->
                     state ! []

@@ -87,6 +87,19 @@ view model =
             ]
         ]
         [ p [] [ text "A Elm Nats demonstration" ]
+        , p [] [ text "Here is what we know about the NATS server" ]
+        , p []
+            [ case model.nats.serverInfo of
+                Just info ->
+                    ul []
+                        [ li [] [ text ("Server ID: " ++ info.server_id) ]
+                        , li [] [ text ("Version: " ++ info.version) ]
+                        , li [] [ text ("Go version: " ++ info.go) ]
+                        ]
+
+                Nothing ->
+                    text "Nothing !"
+            ]
         , p [] [ text "The Publish button Each push on Subscribe creates a new subscription." ]
         , button
             [ onClick Publish ]
