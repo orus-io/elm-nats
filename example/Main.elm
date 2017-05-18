@@ -51,12 +51,12 @@ update msg model =
 
         SubCompMsg subcompMsg ->
             let
-                ( subcomp, subcompSubs, subcompCmd ) =
+                ( subcomp, subcompNatsCmd, subcompCmd ) =
                     SubComp.update subcompMsg model.subcomp
 
                 ( nats, natsCmd ) =
-                    Nats.setupSubscriptions model.nats <|
-                        Nats.mapAll SubCompMsg subcompSubs
+                    Nats.applyNatsCmd model.nats <|
+                        Nats.map SubCompMsg subcompNatsCmd
             in
                 { model
                     | nats = nats

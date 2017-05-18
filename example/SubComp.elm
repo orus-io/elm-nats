@@ -30,14 +30,14 @@ receive n natsMessage =
     Receive n natsMessage.data
 
 
-update : Msg -> Model -> ( Model, List (Nats.Subscription Msg), Cmd Msg )
+update : Msg -> Model -> ( Model, Nats.NatsCmd Msg, Cmd Msg )
 update msg model =
     case msg of
         Subscribe ->
             ( { model
                 | subCounter = model.subCounter + 1
               }
-            , [ Nats.subscribe "test.subject" <| receive model.subCounter ]
+            , Nats.subscribe "test.subject" <| receive model.subCounter
             , Cmd.none
             )
 
@@ -45,7 +45,7 @@ update msg model =
             ( { model
                 | received = (toString n ++ ": " ++ data) :: model.received
               }
-            , []
+            , Nats.none
             , Cmd.none
             )
 

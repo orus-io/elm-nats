@@ -1,7 +1,7 @@
 module Nats
     exposing
         ( State
-        , Subscription
+        , NatsCmd
         , Msg
         , init
         , update
@@ -9,9 +9,9 @@ module Nats
         , publish
         , subscribe
         , map
-        , mapAll
-        , setupSubscription
-        , setupSubscriptions
+        , batch
+        , none
+        , applyNatsCmd
         )
 
 {-| This library provides a pure elm implementation of the NATS client
@@ -21,7 +21,30 @@ The NATS server does not support websocket natively, so a NATS/websocket
 proxy must be used. The only compatible one is
 <https://github.com/orus-io/nats-websocket-gw>
 
-@docs State, Subscription , Msg , init , update , listen , publish , subscribe, setupSubscription, setupSubscriptions, map, mapAll
+
+# Types
+
+@docs State, NatsCmd, Msg
+
+
+# Operations
+
+@docs publish, subscribe
+
+
+# State handling
+
+@docs init, update
+
+
+# Subscriptions
+
+@docs listen
+
+
+# NatsCmd
+
+@docs map, batch, none, applyNatsCmd
 
 -}
 
@@ -37,6 +60,15 @@ type Msg
     = Receive Protocol.Operation
     | ReceptionError String
     | KeepAlive Time.Time
+
+
+{-| A Nats command
+-}
+type NatsCmd msg
+    = Subscribe String (Protocol.Message -> msg)
+    | QueueSubscribe String String (Protocol.Message -> msg)
+    | Batch (List (NatsCmd msg))
+    | None
 
 
 {-| A NATS subscription
@@ -141,25 +173,56 @@ initSubscription subject translate =
     }
 
 
-initQueueSubscription : String -> String -> String -> (Protocol.Message -> msg) -> Subscription msg
-initQueueSubscription subject queueGroup sid translate =
+initQueueSubscription : String -> String -> (Protocol.Message -> msg) -> Subscription msg
+initQueueSubscription subject queueGroup translate =
     { subject = subject
     , queueGroup = queueGroup
-    , sid = sid
-    , translate = translate
-    }
-
-
-{-| Initialize a Subscription for the given subject
-It takes the State and returns it modified.
--}
-subscribe : String -> (Protocol.Message -> msg) -> Subscription msg
-subscribe subject translate =
-    { subject = subject
-    , queueGroup = ""
     , sid = ""
     , translate = translate
     }
+
+
+{-| subscribe to the given subject
+-}
+subscribe : String -> (Protocol.Message -> msg) -> NatsCmd msg
+subscribe =
+    Subscribe
+
+
+{-| perform a queue subscribe to the given subject
+-}
+queueSubscribe : String -> String -> (Protocol.Message -> msg) -> NatsCmd msg
+queueSubscribe =
+    QueueSubscribe
+
+
+{-| Apply NatsCmd in the Nats State and return somd actual Cmd
+-}
+applyNatsCmd : State msg -> NatsCmd msg -> ( State msg, Cmd Msg )
+applyNatsCmd state cmd =
+    case cmd of
+        Subscribe subject translate ->
+            setupSubscription state <| initSubscription subject translate
+
+        QueueSubscribe subject queueGroup translate ->
+            setupSubscription state <| initQueueSubscription subject queueGroup translate
+
+        Batch natsCmds ->
+            let
+                folder natsCmd ( state, cmds ) =
+                    let
+                        ( newState, cmd ) =
+                            applyNatsCmd state natsCmd
+                    in
+                        ( newState, cmd :: cmds )
+
+                ( newState, cmds ) =
+                    List.foldl folder ( state, [] ) natsCmds
+            in
+                newState ! cmds
+
+        None ->
+            state ! []
 
 
 {-| Add a subscription to the State
@@ -181,24 +244,6 @@ setupSubscription state subscription =
         )
 
 
-{-| Add subscriptions to the State
--}
-setupSubscriptions : State msg -> List (Subscription msg) -> ( State msg, Cmd Msg )
-setupSubscriptions state subscriptions =
-    let
-        folder subscription ( state, cmds ) =
-            let
-                ( newState, cmd ) =
-                    setupSubscription state subscription
-            in
-                ( newState, cmd :: cmds )
-
-        ( newState, cmds ) =
-            List.foldl folder ( state, [] ) subscriptions
-    in
-        newState ! cmds
-
-
 {-| Publish a message on a subject
 -}
 publish : State msg -> String -> String -> Cmd Msg
@@ -213,15 +258,31 @@ publish state subject data =
 
 {-| Transform the message produced by some Subscription
 -}
-map : (msg1 -> msg) -> Subscription msg1 -> Subscription msg
-map translate sub =
-    { sub
-        | translate = sub.translate >> translate
-    }
+map : (msg1 -> msg) -> NatsCmd msg1 -> NatsCmd msg
+map msg1ToMsg cmd =
+    case cmd of
+        Subscribe subject translate ->
+            Subscribe subject <| translate >> msg1ToMsg
+
+        QueueSubscribe subject queueGroup translate ->
+            QueueSubscribe subject queueGroup <| translate >> msg1ToMsg
+
+        Batch natsCmds ->
+            Batch <| List.map (map msg1ToMsg) natsCmds
+
+        None ->
+            None
 
 
-{-| Transform the message produced by some Subscription
+{-| batch several NatsCmd into one
 -}
-mapAll : (msg1 -> msg) -> List (Subscription msg1) -> List (Subscription msg)
-mapAll translate subs =
-    List.map (map translate) subs
+batch : List (NatsCmd msg) -> NatsCmd msg
+batch natsCmds =
+    Batch natsCmds
+
+
+{-| A NatsCmd that does nothing
+-}
+none : NatsCmd msg
+none =
+    None
