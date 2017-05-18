@@ -67,6 +67,7 @@ type Msg
 type NatsCmd msg
     = Subscribe String (Protocol.Message -> msg)
     | QueueSubscribe String String (Protocol.Message -> msg)
+    | Publish String String
     | Batch (List (NatsCmd msg))
     | None
 
@@ -212,6 +213,16 @@ applyNatsCmd state cmd =
         QueueSubscribe subject queueGroup translate ->
             setupSubscription state <| initQueueSubscription subject queueGroup translate
 
+        Publish subject data ->
+            state
+                ! [ send state <|
+                        Protocol.PUB
+                            { subject = subject
+                            , replyTo = ""
+                            , data = data
+                            }
+                  ]
+
         Batch natsCmds ->
             let
                 folder natsCmd ( state, cmds ) =
@@ -251,14 +262,9 @@ setupSubscription state subscription =
 
 {-| Publish a message on a subject
 -}
-publish : State msg -> String -> String -> Cmd Msg
-publish state subject data =
-    send state <|
-        Protocol.PUB
-            { subject = subject
-            , replyTo = ""
-            , data = data
-            }
+publish : String -> String -> NatsCmd msg
+publish subject data =
+    Publish subject data
 
 
 {-| Transform the message produced by some Subscription
@@ -271,6 +277,9 @@ map msg1ToMsg cmd =
 
         QueueSubscribe subject queueGroup translate ->
             QueueSubscribe subject queueGroup <| translate >> msg1ToMsg
+
+        Publish subject data ->
+            Publish subject data
 
         Batch natsCmds ->
             Batch <| List.map (map msg1ToMsg) natsCmds

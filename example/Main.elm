@@ -67,9 +67,16 @@ update msg model =
                       ]
 
         Publish ->
-            model
-                ! [ Nats.publish model.nats "test.subject" "Hi" |> Cmd.map NatsMsg
-                  ]
+            let
+                ( nats, natsCmd ) =
+                    Nats.applyNatsCmd model.nats <|
+                        Nats.publish "test.subject" "Hi"
+            in
+                { model
+                    | nats = nats
+                }
+                    ! [ Cmd.map NatsMsg natsCmd
+                      ]
 
         NoOp ->
             ( model, Cmd.none )
