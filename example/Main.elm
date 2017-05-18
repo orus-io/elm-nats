@@ -4,6 +4,7 @@ import Html exposing (Html, text, div, img, button, ul, li, p)
 import Html.Attributes exposing (src, width, style)
 import Html.Events exposing (onClick)
 import Nats
+import SubComp
 
 
 ---- MODEL ----
@@ -11,14 +12,14 @@ import Nats
 
 type alias Model =
     { nats : Nats.State Msg
-    , received : List String
+    , subcomp : SubComp.Model
     }
 
 
 init : ( Model, Cmd Msg )
 init =
     ( { nats = Nats.init "ws://localhost:8910/nats"
-      , received = []
+      , subcomp = SubComp.init
       }
     , Cmd.none
     )
@@ -31,9 +32,8 @@ init =
 type Msg
     = NoOp
     | NatsMsg Nats.Msg
-    | Subscribe
+    | SubCompMsg SubComp.Msg
     | Publish
-    | Receive Nats.NatsMessage
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -49,27 +49,27 @@ update msg model =
                 }
                     ! [ Cmd.map NatsMsg natsCmd ]
 
-        Subscribe ->
+        SubCompMsg subcompMsg ->
             let
+                ( subcomp, subcompSubs, subcompCmd ) =
+                    SubComp.update subcompMsg model.subcomp
+
                 ( nats, natsCmd ) =
-                    Nats.setupSubscription model.nats <|
-                        Nats.subscribe "test.subject" Receive
+                    Nats.setupSubscriptions model.nats <|
+                        Nats.mapAll SubCompMsg subcompSubs
             in
                 { model
                     | nats = nats
+                    , subcomp = subcomp
                 }
-                    ! [ Cmd.map NatsMsg natsCmd ]
+                    ! [ Cmd.map NatsMsg natsCmd
+                      , Cmd.map SubCompMsg subcompCmd
+                      ]
 
         Publish ->
             model
                 ! [ Nats.publish model.nats "test.subject" "Hi" |> Cmd.map NatsMsg
                   ]
-
-        Receive natsMessage ->
-            { model
-                | received = (natsMessage.sid ++ ": " ++ natsMessage.payload) :: model.received
-            }
-                ! []
 
         NoOp ->
             ( model, Cmd.none )
@@ -87,19 +87,11 @@ view model =
             ]
         ]
         [ p [] [ text "A Elm Nats demonstration" ]
-        , p [] [ text "The Subscribe button creates a new subscription to 'test.subject'." ]
-        , button
-            [ onClick Subscribe ]
-            [ text "Subscribe" ]
         , p [] [ text "The Publish button Each push on Subscribe creates a new subscription." ]
         , button
             [ onClick Publish ]
             [ text "Publish" ]
-        , p [] [ text "Here are the received messages, prefixed with their subscription ID (most recent are on top):" ]
-        , ul [] <|
-            List.map
-                (text >> List.singleton >> li [])
-                model.received
+        , SubComp.view model.subcomp |> Html.map SubCompMsg
         ]
 
 

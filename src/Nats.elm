@@ -9,6 +9,8 @@ module Nats
         , listen
         , publish
         , subscribe
+        , map
+        , mapAll
         , setupSubscription
         , setupSubscriptions
         )
@@ -20,7 +22,7 @@ The NATS server does not support websocket natively, so a NATS/websocket
 proxy must be used. The only compatible one is
 <https://github.com/orus-io/nats-websocket-gw>
 
-@docs State, Subscription , Msg , NatsMessage , init , update , listen , publish , subscribe, setupSubscription, setupSubscriptions
+@docs State, Subscription , Msg , NatsMessage , init , update , listen , publish , subscribe, setupSubscription, setupSubscriptions, map, mapAll
 
 -}
 
@@ -335,6 +337,8 @@ subscribe subject translate =
     }
 
 
+{-| Add a subscription to the State
+-}
 setupSubscription : State msg -> Subscription msg -> ( State msg, Cmd Msg )
 setupSubscription state subscription =
     let
@@ -352,6 +356,8 @@ setupSubscription state subscription =
         )
 
 
+{-| Add subscriptions to the State
+-}
 setupSubscriptions : State msg -> List (Subscription msg) -> ( State msg, Cmd Msg )
 setupSubscriptions state subscriptions =
     let
@@ -379,3 +385,19 @@ publish state subject payload =
             , replyTo = ""
             , payload = payload
             }
+
+
+{-| Transform the message produced by some Subscription
+-}
+map : (msg1 -> msg) -> Subscription msg1 -> Subscription msg
+map translate sub =
+    { sub
+        | translate = sub.translate >> translate
+    }
+
+
+{-| Transform the message produced by some Subscription
+-}
+mapAll : (msg1 -> msg) -> List (Subscription msg1) -> List (Subscription msg)
+mapAll translate subs =
+    List.map (map translate) subs
