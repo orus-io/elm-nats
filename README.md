@@ -22,6 +22,7 @@ Nats module. You need to wire it into your application though.
 
     ```elm
     import Nats
+    import Nats.Protocol
     ```
 
 1. Add a state to your top-level model, or at least one that contains all
@@ -83,6 +84,14 @@ model ! [ Nats.publish model.nats "subject1" "Hello world!" |> Cmd.map NatsMsg ]
 ```
 
 ## Subscribing
+
+1. Define a Msg tag for receiving messages
+
+   ```elm
+
+   type Msg
+       = ReceiveSubject1 Nats.Protocol.Message
+   ```
 
 1. Initialize the subscriptions in init or update
 

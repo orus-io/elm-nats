@@ -3,7 +3,6 @@ module Nats
         ( State
         , Subscription
         , Msg
-        , NatsMessage
         , init
         , update
         , listen
@@ -22,56 +21,21 @@ The NATS server does not support websocket natively, so a NATS/websocket
 proxy must be used. The only compatible one is
 <https://github.com/orus-io/nats-websocket-gw>
 
-@docs State, Subscription , Msg , NatsMessage , init , update , listen , publish , subscribe, setupSubscription, setupSubscriptions, map, mapAll
+@docs State, Subscription , Msg , init , update , listen , publish , subscribe, setupSubscription, setupSubscriptions, map, mapAll
 
 -}
 
 import WebSocket
 import Dict exposing (Dict)
 import Time
-import Regex exposing (Regex)
-
-
-{-
-   INFO 	Server 	Sent to client after initial TCP/IP connection
-   CONNECT 	Client 	Sent to server to specify connection information
-   PUB 	Client 	Publish a message to a subject, with optional reply subject
-   SUB 	Client 	Subscribe to a subject (or subject wildcard)
-   UNSUB 	Client 	Unsubscribe (or auto-unsubscribe) from subject
-   MSG 	Server 	Delivers a message payload to a subscriber
-   PING 	Both 	PING keep-alive message
-   PONG 	Both 	PONG keep-alive response
-   +OK 	Server 	Acknowledges well-formed protocol message in verbose mode
-   -ERR 	Server 	Indicates a protocol error. Will cause client disconnect.
--}
-
-
-{-| A message sent to or received from the nats server
--}
-type alias NatsMessage =
-    { subject : String
-    , sid : String
-    , replyTo : String
-    , payload : String
-    }
-
-
-type Command
-    = Message NatsMessage
-    | Ping
-    | Pong
-    | Pub NatsMessage
-    | Sub SubscriptionDef
-    | Unsub String
-    | AutoUnsub String Int
-    | Ok
-    | Err String
+import Nats.Protocol as Protocol
 
 
 {-| Type of message the update function takes
 -}
 type Msg
-    = Receive Command
+    = Receive Protocol.Operation
+    | ReceptionError String
     | KeepAlive Time.Time
 
 
@@ -81,14 +45,7 @@ type alias Subscription msg =
     { subject : String
     , queueGroup : String
     , sid : String
-    , translate : NatsMessage -> msg
-    }
-
-
-type alias SubscriptionDef =
-    { subject : String
-    , queueGroup : String
-    , sid : String
+    , translate : Protocol.Message -> msg
     }
 
 
@@ -102,100 +59,24 @@ type alias State msg =
     }
 
 
-natsMessageRe : Regex
-natsMessageRe =
-    Regex.regex "^MSG ([a-zA-Z0-9.]+) ([a-zA-Z0-9]+)( [a-zA-Z0-9.]+)? [0-9]+\\r\\n(.*)\\r\\n$"
+receive : State msg -> (Msg -> msg) -> Result String Protocol.Operation -> msg
+receive state convert operation =
+    case operation of
+        Err err ->
+            convert <| ReceptionError err
 
+        Ok operation ->
+            case operation of
+                Protocol.MSG sid natsMsg ->
+                    case Dict.get sid state.subscriptions of
+                        Just sub ->
+                            sub.translate natsMsg
 
-matchNatsMessage : String -> Result String (List (Maybe String))
-matchNatsMessage str =
-    let
-        matches =
-            Regex.find (Regex.AtMost 1) natsMessageRe str
-    in
-        case List.head matches of
-            Just match ->
-                Result.Ok match.submatches
+                        Nothing ->
+                            convert <| Receive operation
 
-            Nothing ->
-                Result.Err "Invalid MSG syntax"
-
-
-parseNatsMessage : String -> Result String NatsMessage
-parseNatsMessage str =
-    case matchNatsMessage str of
-        Result.Ok subm ->
-            let
-                args =
-                    List.map (Maybe.withDefault "") subm
-
-                subject =
-                    Maybe.withDefault "" (List.head args)
-
-                sid =
-                    Maybe.withDefault "" (List.drop 1 args |> List.head)
-
-                replyTo =
-                    case Maybe.withDefault "" (List.drop 2 args |> List.head) of
-                        " " ->
-                            ""
-
-                        v ->
-                            v
-
-                payload =
-                    Maybe.withDefault "" (List.drop 3 args |> List.head)
-            in
-                Result.Ok <|
-                    { subject = subject
-                    , sid = sid
-                    , replyTo = replyTo
-                    , payload = payload
-                    }
-
-        Result.Err err ->
-            Result.Err err
-
-
-parseCommand : String -> Command
-parseCommand str =
-    case str of
-        "PING\x0D\n" ->
-            Ping
-
-        "PONG\x0D\n" ->
-            Pong
-
-        "+OK\x0D\n" ->
-            Ok
-
-        _ ->
-            if String.startsWith "-ERR" str then
-                Err <| String.dropLeft 4 str
-            else if String.startsWith "MSG" str then
-                case parseNatsMessage str of
-                    Result.Ok message ->
-                        Message message
-
-                    Result.Err err ->
-                        Err err
-            else
-                Err <| "Invalid command '" ++ str ++ "'"
-
-
-receive : State msg -> (Msg -> msg) -> Command -> msg
-receive state convert command =
-    case command of
-        Message natsMsg ->
-            case Dict.get natsMsg.sid state.subscriptions of
-                Just sub ->
-                    sub.translate natsMsg
-
-                Nothing ->
-                    convert <| Receive command
-
-        _ ->
-            convert <| Receive command
+                _ ->
+                    convert <| Receive operation
 
 
 {-| Creates a Sub for the whole applications
@@ -208,7 +89,7 @@ listen state convert =
     Sub.batch
         [ WebSocket.listen
             state.url
-            (parseCommand >> receive state convert)
+            (Protocol.parseOperation >> receive state convert)
         , Time.every state.keepAlive (KeepAlive >> convert)
         ]
 
@@ -224,60 +105,9 @@ init url =
     }
 
 
-cmdToString : Command -> String
-cmdToString cmd =
-    (case cmd of
-        Message message ->
-            ""
-
-        Ping ->
-            "PING"
-
-        Pong ->
-            "PONG"
-
-        Pub natsMsg ->
-            "PUB "
-                ++ natsMsg.subject
-                ++ (if not (String.isEmpty natsMsg.replyTo) then
-                        " " ++ natsMsg.replyTo
-                    else
-                        ""
-                   )
-                ++ " "
-                ++ toString (String.length natsMsg.payload)
-                ++ "\x0D\n"
-                ++ natsMsg.payload
-
-        Sub sub ->
-            "SUB "
-                ++ sub.subject
-                ++ " "
-                ++ (if not (String.isEmpty sub.queueGroup) then
-                        sub.queueGroup ++ " "
-                    else
-                        ""
-                   )
-                ++ sub.sid
-
-        Unsub sid ->
-            "UNSUB " ++ sid
-
-        AutoUnsub sid maxMsgs ->
-            "UNSUB " ++ sid ++ " " ++ toString maxMsgs
-
-        Ok ->
-            "OK"
-
-        Err err ->
-            "ERR " ++ err
-    )
-        ++ "\x0D\n"
-
-
-send : State msg -> Command -> Cmd Msg
-send state cmd =
-    cmdToString cmd |> WebSocket.send state.url
+send : State msg -> Protocol.Operation -> Cmd Msg
+send state op =
+    Protocol.toString op |> WebSocket.send state.url
 
 
 {-| The update function
@@ -287,19 +117,22 @@ and send a PING to keep the connection alive.
 update : Msg -> State msg -> ( State msg, Cmd Msg )
 update msg state =
     case msg of
-        Receive command ->
-            case command of
-                Ping ->
-                    state ! [ send state Pong ]
+        Receive op ->
+            case op of
+                Protocol.PING ->
+                    state ! [ send state Protocol.PONG ]
 
                 _ ->
                     state ! []
 
+        ReceptionError err ->
+            state ! []
+
         KeepAlive _ ->
-            state ! [ send state Ping ]
+            state ! [ send state Protocol.PING ]
 
 
-initSubscription : String -> (NatsMessage -> msg) -> Subscription msg
+initSubscription : String -> (Protocol.Message -> msg) -> Subscription msg
 initSubscription subject translate =
     { subject = subject
     , queueGroup = ""
@@ -308,7 +141,7 @@ initSubscription subject translate =
     }
 
 
-initQueueSubscription : String -> String -> String -> (NatsMessage -> msg) -> Subscription msg
+initQueueSubscription : String -> String -> String -> (Protocol.Message -> msg) -> Subscription msg
 initQueueSubscription subject queueGroup sid translate =
     { subject = subject
     , queueGroup = queueGroup
@@ -317,18 +150,10 @@ initQueueSubscription subject queueGroup sid translate =
     }
 
 
-subscriptionDef : Subscription msg -> SubscriptionDef
-subscriptionDef sub =
-    { subject = sub.subject
-    , queueGroup = sub.queueGroup
-    , sid = sub.sid
-    }
-
-
 {-| Initialize a Subscription for the given subject
 It takes the State and returns it modified.
 -}
-subscribe : String -> (NatsMessage -> msg) -> Subscription msg
+subscribe : String -> (Protocol.Message -> msg) -> Subscription msg
 subscribe subject translate =
     { subject = subject
     , queueGroup = ""
@@ -352,7 +177,7 @@ setupSubscription state subscription =
             | sidCounter = state.sidCounter + 1
             , subscriptions = Dict.insert sub.sid sub state.subscriptions
           }
-        , send state <| Sub <| subscriptionDef sub
+        , send state <| Protocol.SUB sub.subject sub.queueGroup sub.sid
         )
 
 
@@ -377,13 +202,12 @@ setupSubscriptions state subscriptions =
 {-| Publish a message on a subject
 -}
 publish : State msg -> String -> String -> Cmd Msg
-publish state subject payload =
+publish state subject data =
     send state <|
-        Pub
+        Protocol.PUB
             { subject = subject
-            , sid = ""
             , replyTo = ""
-            , payload = payload
+            , data = data
             }
 
 
