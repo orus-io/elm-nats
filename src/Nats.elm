@@ -9,6 +9,8 @@ module Nats
         , listen
         , publish
         , subscribe
+        , setupSubscription
+        , setupSubscriptions
         )
 
 {-| This library provides a pure elm implementation of the NATS client
@@ -18,7 +20,7 @@ The NATS server does not support websocket natively, so a NATS/websocket
 proxy must be used. The only compatible one is
 <https://github.com/orus-io/nats-websocket-gw>
 
-@docs State, Subscription , Msg , NatsMessage , init , update , listen , publish , subscribe
+@docs State, Subscription , Msg , NatsMessage , init , update , listen , publish , subscribe, setupSubscription, setupSubscriptions
 
 -}
 
@@ -295,11 +297,11 @@ update msg state =
             state ! [ send state Ping ]
 
 
-initSubscription : String -> String -> (NatsMessage -> msg) -> Subscription msg
-initSubscription subject sid translate =
+initSubscription : String -> (NatsMessage -> msg) -> Subscription msg
+initSubscription subject translate =
     { subject = subject
     , queueGroup = ""
-    , sid = sid
+    , sid = ""
     , translate = translate
     }
 
@@ -324,18 +326,46 @@ subscriptionDef sub =
 {-| Initialize a Subscription for the given subject
 It takes the State and returns it modified.
 -}
-subscribe : State msg -> String -> (NatsMessage -> msg) -> ( State msg, Cmd Msg )
-subscribe state subject translate =
+subscribe : String -> (NatsMessage -> msg) -> Subscription msg
+subscribe subject translate =
+    { subject = subject
+    , queueGroup = ""
+    , sid = ""
+    , translate = translate
+    }
+
+
+setupSubscription : State msg -> Subscription msg -> ( State msg, Cmd Msg )
+setupSubscription state subscription =
     let
+        sub : Subscription msg
         sub =
-            initSubscription subject (toString state.sidCounter) translate
+            { subscription
+                | sid = toString state.sidCounter
+            }
     in
-        { state
+        ( { state
             | sidCounter = state.sidCounter + 1
-            , subscriptions =
-                Dict.insert (toString state.sidCounter) sub state.subscriptions
-        }
-            ! [ send state <| Sub (subscriptionDef sub) ]
+            , subscriptions = Dict.insert sub.sid sub state.subscriptions
+          }
+        , send state <| Sub <| subscriptionDef sub
+        )
+
+
+setupSubscriptions : State msg -> List (Subscription msg) -> ( State msg, Cmd Msg )
+setupSubscriptions state subscriptions =
+    let
+        folder subscription ( state, cmds ) =
+            let
+                ( newState, cmd ) =
+                    setupSubscription state subscription
+            in
+                ( newState, cmd :: cmds )
+
+        ( newState, cmds ) =
+            List.foldl folder ( state, [] ) subscriptions
+    in
+        newState ! cmds
 
 
 {-| Publish a message on a subject

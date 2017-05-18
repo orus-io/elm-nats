@@ -52,7 +52,8 @@ update msg model =
         Subscribe ->
             let
                 ( nats, natsCmd ) =
-                    Nats.subscribe model.nats "test.subject" Receive
+                    Nats.setupSubscription model.nats <|
+                        Nats.subscribe "test.subject" Receive
             in
                 { model
                     | nats = nats

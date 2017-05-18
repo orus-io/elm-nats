@@ -89,7 +89,8 @@ model ! [ Nats.publish model.nats "subject1" "Hello world!" |> Cmd.map NatsMsg ]
    ```elm
    let
        ( nats, natsCmd ) =
-           Nats.subscribe model.nats "subject1" ReceiveSubject1
+           Nats.setupSubscription model.nats <|
+               Nats.subscribe "subject1" ReceiveSubject1
    in
        { model
            | nats = nats
