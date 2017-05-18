@@ -29,7 +29,7 @@ Nats module. You need to wire it into your application though.
 
     ```elm
     type alias Model =
-        { nats: Nats.State
+        { nats: Nats.State Msg
         -- ...
         }
     ```
@@ -65,12 +65,11 @@ Nats module. You need to wire it into your application though.
                     ! [ Cmd.map NatsMsg natsCmd ]
    ```
 
-1. Define the top-level subscription (the empty list will be filled later, see
-   the Subscribing chapter below)
+1. Define the top-level subscription
 
    ```elm
    subscriptions model =
-       Nats.listen model.state NatsMsg []
+       Nats.listen model.state NatsMsg
    ```
 
 ## Publishing
@@ -85,49 +84,15 @@ model ! [ Nats.publish model.nats "subject1" "Hello world!" |> Cmd.map NatsMsg ]
 
 ## Subscribing
 
-1. Add the subscriptions to your model (can be in a nested component)
-
-   ```elm
-   type alias Model =
-       { subject1Subscription: Maybe (Nats.Subscription Msg)
-       , subject2Subscription: Maybe (Nats.Subscription Msg)
-       }
-   ```
-
 1. Initialize the subscriptions in init or update
 
    ```elm
    let
-       ( sub1, nats, natsCmd ) =
+       ( nats, natsCmd ) =
            Nats.subscribe model.nats "subject1" ReceiveSubject1
    in
        { model
            | nats = nats
-           , subject1Subscription = Just sub1
        }
            ! [ Cmd.map NatsMsg natsCmd ]
    ```
-
-1. Pass the nats subscriptions to the listen function
-   Here the list construction may gather and map subscriptions from
-   child-components.
-
-   ```elm
-   subscriptions model =
-       let
-           subList =
-               List.filter
-                   (\s -> case s of
-                       Just s ->
-                           True
-                       Nothing ->
-                           False
-                   )
-                   [ model.subject1Subscription, model.subject2Subscription ]
-       in
-           Nats.listen model.nats NatsMsg subList
-   ```
-
-Subscribing requires an update of the State, which means a nested component
-will need to take the State as an extra argument and return it updated so
-it can be applied in the model by the top-level update.

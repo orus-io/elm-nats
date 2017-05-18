@@ -10,8 +10,7 @@ import Nats
 
 
 type alias Model =
-    { nats : Nats.State
-    , natsSubscriptions : List (Nats.Subscription Msg)
+    { nats : Nats.State Msg
     , received : List String
     }
 
@@ -19,7 +18,6 @@ type alias Model =
 init : ( Model, Cmd Msg )
 init =
     ( { nats = Nats.init "ws://localhost:8910/nats"
-      , natsSubscriptions = []
       , received = []
       }
     , Cmd.none
@@ -53,12 +51,11 @@ update msg model =
 
         Subscribe ->
             let
-                ( sub, nats, natsCmd ) =
+                ( nats, natsCmd ) =
                     Nats.subscribe model.nats "test.subject" Receive
             in
                 { model
                     | nats = nats
-                    , natsSubscriptions = sub :: model.natsSubscriptions
                 }
                     ! [ Cmd.map NatsMsg natsCmd ]
 
@@ -125,4 +122,4 @@ main =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    Nats.listen model.nats NatsMsg model.natsSubscriptions
+    Nats.listen model.nats NatsMsg

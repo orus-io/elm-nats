@@ -57,7 +57,7 @@ type Command
     | Ping
     | Pong
     | Pub NatsMessage
-    | Sub SubscriptionState
+    | Sub SubscriptionDef
     | Unsub String
     | AutoUnsub String Int
     | Ok
@@ -71,14 +71,17 @@ type Msg
     | KeepAlive Time.Time
 
 
-{-| A NATS subscription that can be stored in any component model using
-subscriptions.
+{-| A NATS subscription
 -}
-type Subscription msg
-    = Subscription (NatsMessage -> msg) String
+type alias Subscription msg =
+    { subject : String
+    , queueGroup : String
+    , sid : String
+    , translate : NatsMessage -> msg
+    }
 
 
-type alias SubscriptionState =
+type alias SubscriptionDef =
     { subject : String
     , queueGroup : String
     , sid : String
@@ -87,11 +90,11 @@ type alias SubscriptionState =
 
 {-| The NATS state to add to the application model (once)
 -}
-type alias State =
+type alias State msg =
     { url : String
     , keepAlive : Time.Time
     , sidCounter : Int
-    , subscriptions : Dict String SubscriptionState
+    , subscriptions : Dict String (Subscription msg)
     }
 
 
@@ -176,13 +179,13 @@ parseCommand str =
                 Err <| "Invalid command '" ++ str ++ "'"
 
 
-receive : State -> (Msg -> msg) -> Dict String (NatsMessage -> msg) -> Command -> msg
-receive state convert subscriptions command =
+receive : State msg -> (Msg -> msg) -> Command -> msg
+receive state convert command =
     case command of
         Message natsMsg ->
-            case Dict.get natsMsg.sid subscriptions of
-                Just translate ->
-                    translate natsMsg
+            case Dict.get natsMsg.sid state.subscriptions of
+                Just sub ->
+                    sub.translate natsMsg
 
                 Nothing ->
                     convert <| Receive command
@@ -196,31 +199,19 @@ It takes a list of all the active subscriptions from all the application
 parts, which are used to translate the WebSocket message into the message
 type each component need.
 -}
-listen : State -> (Msg -> msg) -> List (Subscription msg) -> Sub msg
-listen state convert subscriptions =
-    let
-        subscriptionsDict =
-            List.map
-                (\sub ->
-                    (case sub of
-                        Subscription translate sid ->
-                            ( sid, translate )
-                    )
-                )
-                subscriptions
-                |> Dict.fromList
-    in
-        Sub.batch
-            [ WebSocket.listen
-                state.url
-                (parseCommand >> receive state convert subscriptionsDict)
-            , Time.every state.keepAlive (KeepAlive >> convert)
-            ]
+listen : State msg -> (Msg -> msg) -> Sub msg
+listen state convert =
+    Sub.batch
+        [ WebSocket.listen
+            state.url
+            (parseCommand >> receive state convert)
+        , Time.every state.keepAlive (KeepAlive >> convert)
+        ]
 
 
 {-| Initialize a Nats State for a given websocket URL
 -}
-init : String -> State
+init : String -> State msg
 init url =
     { url = url
     , keepAlive = 5 * Time.minute
@@ -280,7 +271,7 @@ cmdToString cmd =
         ++ "\x0D\n"
 
 
-send : State -> Command -> Cmd Msg
+send : State msg -> Command -> Cmd Msg
 send state cmd =
     cmdToString cmd |> WebSocket.send state.url
 
@@ -289,7 +280,7 @@ send state cmd =
 Will make sure PING commands from the server are honored with a PONG,
 and send a PING to keep the connection alive.
 -}
-update : Msg -> State -> ( State, Cmd Msg )
+update : Msg -> State msg -> ( State msg, Cmd Msg )
 update msg state =
     case msg of
         Receive command ->
@@ -304,44 +295,52 @@ update msg state =
             state ! [ send state Ping ]
 
 
-initSubscription : String -> String -> SubscriptionState
-initSubscription subject sid =
+initSubscription : String -> String -> (NatsMessage -> msg) -> Subscription msg
+initSubscription subject sid translate =
     { subject = subject
     , queueGroup = ""
     , sid = sid
+    , translate = translate
     }
 
 
-initQueueSubscription : String -> String -> String -> SubscriptionState
-initQueueSubscription subject queueGroup sid =
+initQueueSubscription : String -> String -> String -> (NatsMessage -> msg) -> Subscription msg
+initQueueSubscription subject queueGroup sid translate =
     { subject = subject
     , queueGroup = queueGroup
     , sid = sid
+    , translate = translate
+    }
+
+
+subscriptionDef : Subscription msg -> SubscriptionDef
+subscriptionDef sub =
+    { subject = sub.subject
+    , queueGroup = sub.queueGroup
+    , sid = sub.sid
     }
 
 
 {-| Initialize a Subscription for the given subject
 It takes the State and returns it modified.
 -}
-subscribe : State -> String -> (NatsMessage -> msg) -> ( Subscription msg, State, Cmd Msg )
+subscribe : State msg -> String -> (NatsMessage -> msg) -> ( State msg, Cmd Msg )
 subscribe state subject translate =
     let
-        subState =
-            initSubscription subject (toString state.sidCounter)
+        sub =
+            initSubscription subject (toString state.sidCounter) translate
     in
-        ( Subscription translate (toString state.sidCounter)
-        , { state
+        { state
             | sidCounter = state.sidCounter + 1
             , subscriptions =
-                Dict.insert (toString state.sidCounter) subState state.subscriptions
-          }
-        , send state <| Sub subState
-        )
+                Dict.insert (toString state.sidCounter) sub state.subscriptions
+        }
+            ! [ send state <| Sub (subscriptionDef sub) ]
 
 
 {-| Publish a message on a subject
 -}
-publish : State -> String -> String -> Cmd Msg
+publish : State msg -> String -> String -> Cmd Msg
 publish state subject payload =
     send state <|
         Pub
