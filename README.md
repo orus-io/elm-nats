@@ -106,3 +106,27 @@ model ! [ Nats.publish model.nats "subject1" "Hello world!" |> Cmd.map NatsMsg ]
        }
            ! [ Cmd.map NatsMsg natsCmd ]
    ```
+
+# Request
+
+1. Define a Msg tag for receiving the response
+
+   ```elm
+
+   type Msg
+       = ReceiveResponse Nats.Protocol.Message
+   ```
+
+1. Send a request from your update function
+
+   ```elm
+   let
+       ( nats, natsCmd ) =
+           Nats.applyNatsCmd model.nats <|
+               Nats.request "subject1" ReceiveResponse
+   in
+       { model
+           | nats = nats
+       }
+           ! [ Cmd.map NatsMsg natsCmd ]
+   ```

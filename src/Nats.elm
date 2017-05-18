@@ -8,6 +8,7 @@ module Nats
         , listen
         , publish
         , subscribe
+        , request
         , map
         , batch
         , none
@@ -29,7 +30,7 @@ proxy must be used. The only compatible one is
 
 # Operations
 
-@docs publish, subscribe
+@docs publish, subscribe, request
 
 
 # State handling
@@ -52,6 +53,9 @@ import WebSocket
 import Dict exposing (Dict)
 import Time
 import Nats.Protocol as Protocol
+import Random
+import Random.Char
+import Random.String
 
 
 {-| Type of message the update function takes
@@ -59,6 +63,7 @@ import Nats.Protocol as Protocol
 type Msg
     = Receive Protocol.Operation
     | ReceptionError String
+    | RequestInbox ( String, String ) String String
     | KeepAlive Time.Time
 
 
@@ -68,6 +73,7 @@ type NatsCmd msg
     = Subscribe String (Protocol.Message -> msg)
     | QueueSubscribe String String (Protocol.Message -> msg)
     | Publish String String
+    | Request String String (Protocol.Message -> msg)
     | Batch (List (NatsCmd msg))
     | None
 
@@ -90,6 +96,7 @@ type alias State msg =
     , sidCounter : Int
     , subscriptions : Dict String (Subscription msg)
     , serverInfo : Maybe Protocol.ServerInfo
+    , inboxPrefix : String
     }
 
 
@@ -137,12 +144,21 @@ init url =
     , sidCounter = 0
     , subscriptions = Dict.empty
     , serverInfo = Nothing
+    , inboxPrefix = "_INBOX."
     }
 
 
 send : State msg -> Protocol.Operation -> Cmd Msg
 send state op =
     Protocol.toString op |> WebSocket.send state.url
+
+
+sendAll : State msg -> List Protocol.Operation -> Cmd Msg
+sendAll state ops =
+    (String.join "" <|
+        List.map Protocol.toString ops
+    )
+        |> WebSocket.send state.url
 
 
 {-| The update function
@@ -165,6 +181,30 @@ update msg state =
 
         ReceptionError err ->
             state ! []
+
+        RequestInbox ( subject, data ) sid inboxSuffix ->
+            case Dict.get sid state.subscriptions of
+                Just sub ->
+                    let
+                        newSub =
+                            { sub | subject = state.inboxPrefix ++ inboxSuffix }
+                    in
+                        { state
+                            | subscriptions = Dict.insert sid newSub state.subscriptions
+                        }
+                            ! [ sendAll state
+                                    [ Protocol.SUB newSub.subject newSub.queueGroup newSub.sid
+                                    , Protocol.PUB
+                                        { subject = subject
+                                        , replyTo = newSub.subject
+                                        , data = data
+                                        }
+                                    ]
+                              ]
+
+                Nothing ->
+                    -- TODO report an error somehow ? crash the app ?
+                    state ! []
 
         KeepAlive _ ->
             state ! [ send state Protocol.PING ]
@@ -202,16 +242,25 @@ queueSubscribe =
     QueueSubscribe
 
 
+tuple3last2 : ( a, b, c ) -> ( b, c )
+tuple3last2 ( a, b, c ) =
+    ( b, c )
+
+
 {-| Apply NatsCmd in the Nats State and return somd actual Cmd
 -}
 applyNatsCmd : State msg -> NatsCmd msg -> ( State msg, Cmd Msg )
 applyNatsCmd state cmd =
     case cmd of
         Subscribe subject translate ->
-            setupSubscription state <| initSubscription subject translate
+            tuple3last2 <|
+                setupSubscription state <|
+                    initSubscription subject translate
 
         QueueSubscribe subject queueGroup translate ->
-            setupSubscription state <| initQueueSubscription subject queueGroup translate
+            tuple3last2 <|
+                setupSubscription state <|
+                    initQueueSubscription subject queueGroup translate
 
         Publish subject data ->
             state
@@ -222,6 +271,19 @@ applyNatsCmd state cmd =
                             , data = data
                             }
                   ]
+
+        Request subject data translate ->
+            -- prepare a subject-less subscription
+            -- get a random id
+            let
+                ( sub, newState, cmd ) =
+                    setupSubscription state <|
+                        initSubscription "" translate
+            in
+                newState
+                    ! [ Random.generate (RequestInbox ( subject, data ) sub.sid) <|
+                            Random.String.string 12 Random.Char.latin
+                      ]
 
         Batch natsCmds ->
             let
@@ -243,7 +305,7 @@ applyNatsCmd state cmd =
 
 {-| Add a subscription to the State
 -}
-setupSubscription : State msg -> Subscription msg -> ( State msg, Cmd Msg )
+setupSubscription : State msg -> Subscription msg -> ( Subscription msg, State msg, Cmd Msg )
 setupSubscription state subscription =
     let
         sub : Subscription msg
@@ -252,7 +314,8 @@ setupSubscription state subscription =
                 | sid = toString state.sidCounter
             }
     in
-        ( { state
+        ( sub
+        , { state
             | sidCounter = state.sidCounter + 1
             , subscriptions = Dict.insert sub.sid sub state.subscriptions
           }
@@ -265,6 +328,13 @@ setupSubscription state subscription =
 publish : String -> String -> NatsCmd msg
 publish subject data =
     Publish subject data
+
+
+{-| Send a request an return the response in a msg
+-}
+request : String -> String -> (Protocol.Message -> msg) -> NatsCmd msg
+request =
+    Request
 
 
 {-| Transform the message produced by some Subscription
@@ -280,6 +350,9 @@ map msg1ToMsg cmd =
 
         Publish subject data ->
             Publish subject data
+
+        Request subject data translate ->
+            Request subject data (translate >> msg1ToMsg)
 
         Batch natsCmds ->
             Batch <| List.map (map msg1ToMsg) natsCmds

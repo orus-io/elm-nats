@@ -1,9 +1,10 @@
 module Main exposing (main)
 
-import Html exposing (Html, text, div, img, button, ul, li, p)
-import Html.Attributes exposing (src, width, style)
-import Html.Events exposing (onClick)
+import Html exposing (Html, text, div, img, button, ul, li, p, input, label)
+import Html.Attributes exposing (src, width, style, type_)
+import Html.Events exposing (onClick, onInput)
 import Nats
+import Nats.Protocol
 import SubComp
 
 
@@ -13,16 +14,26 @@ import SubComp
 type alias Model =
     { nats : Nats.State Msg
     , subcomp : SubComp.Model
+    , inputText : String
+    , response : Maybe String
     }
 
 
 init : ( Model, Cmd Msg )
 init =
-    ( { nats = Nats.init "ws://localhost:8910/nats"
-      , subcomp = SubComp.init
-      }
-    , Cmd.none
-    )
+    let
+        ( nats, natsCmd ) =
+            Nats.applyNatsCmd
+                (Nats.init "ws://localhost:8910/nats")
+                (Nats.subscribe "say.hello.to.me" HandleRequest)
+    in
+        ( { nats = nats
+          , subcomp = SubComp.init
+          , inputText = ""
+          , response = Nothing
+          }
+        , Cmd.map NatsMsg natsCmd
+        )
 
 
 
@@ -34,6 +45,27 @@ type Msg
     | NatsMsg Nats.Msg
     | SubCompMsg SubComp.Msg
     | Publish
+    | InputText String
+    | SendRequest
+    | ReceiveResponse String
+    | HandleRequest Nats.Protocol.Message
+
+
+applyNatsCmd : Model -> Cmd Msg -> Nats.NatsCmd Msg -> ( Model, Cmd Msg )
+applyNatsCmd model cmd natsCmd =
+    let
+        ( nats, extraCmd ) =
+            Nats.applyNatsCmd model.nats natsCmd
+    in
+        { model
+            | nats = nats
+        }
+            ! [ cmd, Cmd.map NatsMsg extraCmd ]
+
+
+receiveResponse : Nats.Protocol.Message -> Msg
+receiveResponse message =
+    ReceiveResponse message.data
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -53,30 +85,32 @@ update msg model =
             let
                 ( subcomp, subcompNatsCmd, subcompCmd ) =
                     SubComp.update subcompMsg model.subcomp
-
-                ( nats, natsCmd ) =
-                    Nats.applyNatsCmd model.nats <|
-                        Nats.map SubCompMsg subcompNatsCmd
             in
-                { model
-                    | nats = nats
-                    , subcomp = subcomp
-                }
-                    ! [ Cmd.map NatsMsg natsCmd
-                      , Cmd.map SubCompMsg subcompCmd
-                      ]
+                applyNatsCmd
+                    { model
+                        | subcomp = subcomp
+                    }
+                    (Cmd.map SubCompMsg subcompCmd)
+                    (Nats.map SubCompMsg subcompNatsCmd)
 
         Publish ->
-            let
-                ( nats, natsCmd ) =
-                    Nats.applyNatsCmd model.nats <|
-                        Nats.publish "test.subject" "Hi"
-            in
-                { model
-                    | nats = nats
-                }
-                    ! [ Cmd.map NatsMsg natsCmd
-                      ]
+            applyNatsCmd model Cmd.none <| Nats.publish "test.subject" "Hi"
+
+        HandleRequest message ->
+            applyNatsCmd model Cmd.none <| Nats.publish message.replyTo ("Hello " ++ message.data ++ "!")
+
+        InputText text ->
+            { model
+                | inputText = text
+            }
+                ! []
+
+        SendRequest ->
+            applyNatsCmd model Cmd.none <|
+                Nats.request "say.hello.to.me" model.inputText receiveResponse
+
+        ReceiveResponse response ->
+            { model | response = Just response } ! []
 
         NoOp ->
             ( model, Cmd.none )
@@ -111,6 +145,20 @@ view model =
         , button
             [ onClick Publish ]
             [ text "Publish" ]
+        , div []
+            [ text "A req/rep demo"
+            , label []
+                [ text "Your name: "
+                , input [ type_ "text", onInput InputText ] []
+                ]
+            , button [ onClick SendRequest ] [ text "Say hello !" ]
+            , case model.response of
+                Just response ->
+                    text response
+
+                Nothing ->
+                    text ""
+            ]
         , SubComp.view model.subcomp |> Html.map SubCompMsg
         ]
 
