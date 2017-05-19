@@ -5,6 +5,7 @@ import Html.Attributes exposing (src, width, style, type_)
 import Html.Events exposing (onClick, onInput)
 import Nats
 import Nats.Protocol
+import Nats.Sub as NatsSub
 import SubComp
 
 
@@ -21,18 +22,14 @@ type alias Model =
 
 init : ( Model, Cmd Msg )
 init =
-    let
-        ( nats, natsCmd ) =
-            Nats.applyNatsCmd
-                (Nats.init "ws://localhost:8910/nats")
-                (Nats.subscribe "say.hello.to.me" HandleRequest)
-    in
-        ( { nats = nats
+    mergeNats
+        ( { nats = Nats.init "ws://localhost:8910/nats"
           , subcomp = SubComp.init
           , inputText = ""
           , response = Nothing
           }
-        , Cmd.map NatsMsg natsCmd
+        , Nats.none
+        , Cmd.none
         )
 
 
@@ -51,69 +48,89 @@ type Msg
     | HandleRequest Nats.Protocol.Message
 
 
-applyNatsCmd : Model -> Cmd Msg -> Nats.NatsCmd Msg -> ( Model, Cmd Msg )
-applyNatsCmd model cmd natsCmd =
-    let
-        ( nats, extraCmd ) =
-            Nats.applyNatsCmd model.nats natsCmd
-    in
-        { model
-            | nats = nats
-        }
-            ! [ cmd, Cmd.map NatsMsg extraCmd ]
-
-
 receiveResponse : Nats.Protocol.Message -> Msg
 receiveResponse message =
     ReceiveResponse message.data
 
 
+mergeNats : ( Model, Nats.NatsCmd Msg, Cmd Msg ) -> ( Model, Cmd Msg )
+mergeNats ( model, natsCmd, cmd ) =
+    let
+        ( natsState, extraCmd ) =
+            Nats.merge model.nats (natsSubscriptions model) natsCmd
+    in
+        { model
+            | nats = natsState
+        }
+            ! [ cmd, Cmd.map NatsMsg extraCmd ]
+
+
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
-    case msg of
-        NatsMsg natsMsg ->
-            let
-                ( nats, natsCmd ) =
-                    Nats.update natsMsg model.nats
-            in
-                { model
-                    | nats = nats
-                }
-                    ! [ Cmd.map NatsMsg natsCmd ]
+    mergeNats
+        (case msg of
+            NatsMsg natsMsg ->
+                let
+                    ( nats, natsCmd ) =
+                        Nats.update natsMsg model.nats
+                in
+                    ( { model
+                        | nats = nats
+                      }
+                    , Nats.none
+                    , Cmd.map NatsMsg natsCmd
+                    )
 
-        SubCompMsg subcompMsg ->
-            let
-                ( subcomp, subcompNatsCmd, subcompCmd ) =
-                    SubComp.update subcompMsg model.subcomp
-            in
-                applyNatsCmd
-                    { model
+            SubCompMsg subcompMsg ->
+                let
+                    ( subcomp, subcompNatsCmd, subcompCmd ) =
+                        SubComp.update subcompMsg model.subcomp
+                in
+                    ( { model
                         | subcomp = subcomp
-                    }
-                    (Cmd.map SubCompMsg subcompCmd)
-                    (Nats.map SubCompMsg subcompNatsCmd)
+                      }
+                    , (Nats.map SubCompMsg subcompNatsCmd)
+                    , (Cmd.map SubCompMsg subcompCmd)
+                    )
 
-        Publish ->
-            applyNatsCmd model Cmd.none <| Nats.publish "test.subject" "Hi"
+            Publish ->
+                ( model
+                , Nats.publish "test.subject" "Hi"
+                , Cmd.none
+                )
 
-        HandleRequest message ->
-            applyNatsCmd model Cmd.none <| Nats.publish message.replyTo ("Hello " ++ message.data ++ "!")
+            HandleRequest message ->
+                ( model
+                , Nats.publish message.replyTo ("Hello " ++ message.data ++ "!")
+                , Cmd.none
+                )
 
-        InputText text ->
-            { model
-                | inputText = text
-            }
-                ! []
+            InputText text ->
+                ( { model
+                    | inputText = text
+                  }
+                , Nats.none
+                , Cmd.none
+                )
 
-        SendRequest ->
-            applyNatsCmd model Cmd.none <|
-                Nats.request "say.hello.to.me" model.inputText receiveResponse
+            SendRequest ->
+                ( model
+                , Nats.request "say.hello.to.me" model.inputText receiveResponse
+                , Cmd.none
+                )
 
-        ReceiveResponse response ->
-            { model | response = Just response } ! []
+            ReceiveResponse response ->
+                ( { model | response = Just response }
+                , Nats.none
+                , Cmd.none
+                )
 
-        NoOp ->
-            ( model, Cmd.none )
+            NoOp ->
+                ( model
+                , Nats.none
+                , Cmd.none
+                )
+        )
 
 
 
@@ -179,6 +196,14 @@ main =
 
 
 ---- SUBSCRIPTIONS ----
+
+
+natsSubscriptions : Model -> NatsSub.Sub Msg
+natsSubscriptions model =
+    NatsSub.batch
+        [ Nats.subscribe "say.hello.to.me" HandleRequest
+        , NatsSub.map SubCompMsg <| SubComp.natsSubscriptions model.subcomp
+        ]
 
 
 subscriptions : Model -> Sub Msg

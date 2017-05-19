@@ -12,7 +12,7 @@ module Nats
         , map
         , batch
         , none
-        , applyNatsCmd
+        , merge
         )
 
 {-| This library provides a pure elm implementation of the NATS client
@@ -35,7 +35,7 @@ proxy must be used. The only compatible one is
 
 # State handling
 
-@docs init, update
+@docs init, update, merge
 
 
 # Subscriptions
@@ -45,10 +45,11 @@ proxy must be used. The only compatible one is
 
 # NatsCmd
 
-@docs map, batch, none, applyNatsCmd
+@docs map, batch, none
 
 -}
 
+import Debug
 import WebSocket
 import Dict exposing (Dict)
 import Time
@@ -56,6 +57,7 @@ import Nats.Protocol as Protocol
 import Random
 import Random.Char
 import Random.String
+import Nats.Sub as NatsSub
 
 
 {-| Type of message the update function takes
@@ -70,20 +72,24 @@ type Msg
 {-| A Nats command
 -}
 type NatsCmd msg
-    = Subscribe String (Protocol.Message -> msg)
-    | QueueSubscribe String String (Protocol.Message -> msg)
-    | Publish String String
+    = Publish String String
     | Request String String (Protocol.Message -> msg)
     | Batch (List (NatsCmd msg))
     | None
+
+
+type alias Sid =
+    String
 
 
 {-| A NATS subscription
 -}
 type alias Subscription msg =
     { subject : String
+    , tag : String
+    , requestBounded : Bool
     , queueGroup : String
-    , sid : String
+    , sid : Sid
     , translate : Protocol.Message -> msg
     }
 
@@ -94,7 +100,7 @@ type alias State msg =
     { url : String
     , keepAlive : Time.Time
     , sidCounter : Int
-    , subscriptions : Dict String (Subscription msg)
+    , subscriptions : Dict Sid (Subscription msg)
     , serverInfo : Maybe Protocol.ServerInfo
     , inboxPrefix : String
     }
@@ -130,7 +136,7 @@ listen state convert =
     Sub.batch
         [ WebSocket.listen
             state.url
-            (Protocol.parseOperation >> receive state convert)
+            (Debug.log "Receiving" >> Protocol.parseOperation >> receive state convert)
         , Time.every state.keepAlive (KeepAlive >> convert)
         ]
 
@@ -150,7 +156,7 @@ init url =
 
 send : State msg -> Protocol.Operation -> Cmd Msg
 send state op =
-    Protocol.toString op |> WebSocket.send state.url
+    Protocol.toString op |> Debug.log "Sending" |> WebSocket.send state.url
 
 
 sendAll : State msg -> List Protocol.Operation -> Cmd Msg
@@ -210,36 +216,40 @@ update msg state =
             state ! [ send state Protocol.PING ]
 
 
-initSubscription : String -> (Protocol.Message -> msg) -> Subscription msg
-initSubscription subject translate =
-    { subject = subject
-    , queueGroup = ""
-    , sid = ""
-    , translate = translate
-    }
+splitSubject : String -> ( String, String )
+splitSubject s =
+    let
+        sp =
+            String.split "#" s
+    in
+        ( Maybe.withDefault "" (List.head sp)
+        , Maybe.withDefault "" (List.head <| Maybe.withDefault [] <| List.tail sp)
+        )
 
 
-initQueueSubscription : String -> String -> (Protocol.Message -> msg) -> Subscription msg
-initQueueSubscription subject queueGroup translate =
-    { subject = subject
-    , queueGroup = queueGroup
-    , sid = ""
-    , translate = translate
-    }
+initSubscription : String -> String -> Bool -> (Protocol.Message -> msg) -> Subscription msg
+initSubscription subject queueGroup requestBounded translate =
+    let
+        ( cleanSubject, tag ) =
+            splitSubject subject
+    in
+        { subject = cleanSubject
+        , tag = tag
+        , requestBounded = requestBounded
+        , queueGroup = queueGroup
+        , sid = ""
+        , translate = translate
+        }
 
 
-{-| subscribe to the given subject
--}
-subscribe : String -> (Protocol.Message -> msg) -> NatsCmd msg
-subscribe =
-    Subscribe
+subscribe : String -> (Protocol.Message -> msg) -> NatsSub.Sub msg
+subscribe subject tagger =
+    NatsSub.Subscribe subject "" tagger
 
 
-{-| perform a queue subscribe to the given subject
--}
-queueSubscribe : String -> String -> (Protocol.Message -> msg) -> NatsCmd msg
-queueSubscribe =
-    QueueSubscribe
+queuesubscribe : String -> String -> (Protocol.Message -> msg) -> NatsSub.Sub msg
+queuesubscribe subject queueGroup tagger =
+    NatsSub.Subscribe subject queueGroup tagger
 
 
 tuple3last2 : ( a, b, c ) -> ( b, c )
@@ -247,21 +257,87 @@ tuple3last2 ( a, b, c ) =
     ( b, c )
 
 
+applyNatsSub : State msg -> NatsSub.Sub msg -> ( List String, State msg, List (Cmd Msg) )
+applyNatsSub state sub =
+    -- for each sub, check if it already exists. If not, add it and send a SUB
+    -- return updated state and a list of sid
+    case sub of
+        NatsSub.None ->
+            ( [], state, [] )
+
+        NatsSub.BatchSub list ->
+            List.foldl
+                (\sub ( sids, state, cmds ) ->
+                    let
+                        ( nSids, nState, nCmds ) =
+                            applyNatsSub state sub
+                    in
+                        ( sids ++ nSids, nState, cmds ++ nCmds )
+                )
+                ( [], state, [] )
+                list
+
+        NatsSub.Subscribe subject queueGroup tagger ->
+            let
+                ( cleanSubject, tag ) =
+                    splitSubject subject
+            in
+                case
+                    List.head <|
+                        List.filter
+                            (\sub ->
+                                sub.subject == cleanSubject && sub.queueGroup == queueGroup && sub.tag == tag
+                            )
+                            (Dict.values state.subscriptions)
+                of
+                    Just sub ->
+                        ( [ sub.sid ], state, [] )
+
+                    Nothing ->
+                        let
+                            ( nSub, nState, cmd ) =
+                                initSubscription subject queueGroup False tagger
+                                    |> setupSubscription state
+                        in
+                            ( [ nSub.sid ], nState, [ cmd ] )
+
+
+cleanSubs : State msg -> List String -> ( State msg, List (Cmd Msg) )
+cleanSubs state sids =
+    let
+        ( keep, remove ) =
+            Dict.partition
+                (\sid v ->
+                    v.requestBounded || List.member sid sids
+                )
+                state.subscriptions
+    in
+        ( { state
+            | subscriptions = keep
+          }
+        , List.map ((flip Protocol.UNSUB) 0 >> send state) <| Dict.keys remove
+        )
+
+
+mergeNatsSub : State msg -> NatsSub.Sub msg -> ( State msg, Cmd Msg )
+mergeNatsSub state sub =
+    -- apply the sub
+    -- for each establish sub without an incoming sub, delete it and send a UNSUB
+    let
+        ( sids, nState, subCmds ) =
+            applyNatsSub state sub
+
+        ( finalState, unsubCmds ) =
+            cleanSubs nState sids
+    in
+        ( finalState, Cmd.batch (subCmds ++ unsubCmds) )
+
+
 {-| Apply NatsCmd in the Nats State and return somd actual Cmd
 -}
-applyNatsCmd : State msg -> NatsCmd msg -> ( State msg, Cmd Msg )
-applyNatsCmd state cmd =
+mergeNatsCmd : State msg -> NatsCmd msg -> ( State msg, Cmd Msg )
+mergeNatsCmd state cmd =
     case cmd of
-        Subscribe subject translate ->
-            tuple3last2 <|
-                setupSubscription state <|
-                    initSubscription subject translate
-
-        QueueSubscribe subject queueGroup translate ->
-            tuple3last2 <|
-                setupSubscription state <|
-                    initQueueSubscription subject queueGroup translate
-
         Publish subject data ->
             state
                 ! [ send state <|
@@ -278,7 +354,7 @@ applyNatsCmd state cmd =
             let
                 ( sub, newState, cmd ) =
                     setupSubscription state <|
-                        initSubscription "" translate
+                        initSubscription "" "" True translate
             in
                 newState
                     ! [ Random.generate (RequestInbox ( subject, data ) sub.sid) <|
@@ -290,7 +366,7 @@ applyNatsCmd state cmd =
                 folder natsCmd ( state, cmds ) =
                     let
                         ( newState, cmd ) =
-                            applyNatsCmd state natsCmd
+                            mergeNatsCmd state natsCmd
                     in
                         ( newState, cmd :: cmds )
 
@@ -301,6 +377,18 @@ applyNatsCmd state cmd =
 
         None ->
             state ! []
+
+
+merge : State msg -> NatsSub.Sub msg -> NatsCmd msg -> ( State msg, Cmd Msg )
+merge state sub cmd =
+    let
+        ( subState, subCmd ) =
+            mergeNatsSub state sub
+
+        ( cmdState, cmdCmd ) =
+            mergeNatsCmd subState cmd
+    in
+        ( cmdState, Cmd.batch [ subCmd, cmdCmd ] )
 
 
 {-| Add a subscription to the State
@@ -342,12 +430,6 @@ request =
 map : (msg1 -> msg) -> NatsCmd msg1 -> NatsCmd msg
 map msg1ToMsg cmd =
     case cmd of
-        Subscribe subject translate ->
-            Subscribe subject <| translate >> msg1ToMsg
-
-        QueueSubscribe subject queueGroup translate ->
-            QueueSubscribe subject queueGroup <| translate >> msg1ToMsg
-
         Publish subject data ->
             Publish subject data
 

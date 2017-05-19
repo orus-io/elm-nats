@@ -5,10 +5,12 @@ import Html.Attributes exposing (src, width, style)
 import Html.Events exposing (onClick)
 import Nats
 import Nats.Protocol exposing (Message)
+import Nats.Sub as NatsSub
 
 
 type Msg
     = Subscribe
+    | Unsubscribe
     | Receive Int String
 
 
@@ -30,6 +32,13 @@ receive n natsMessage =
     Receive n natsMessage.data
 
 
+natsSubscriptions : Model -> NatsSub.Sub Msg
+natsSubscriptions model =
+    List.range 0 (model.subCounter - 1)
+        |> List.map (\n -> receive n |> Nats.subscribe ("test.subject#Subcomp" ++ toString n))
+        |> NatsSub.batch
+
+
 update : Msg -> Model -> ( Model, Nats.NatsCmd Msg, Cmd Msg )
 update msg model =
     case msg of
@@ -37,7 +46,19 @@ update msg model =
             ( { model
                 | subCounter = model.subCounter + 1
               }
-            , Nats.subscribe "test.subject" <| receive model.subCounter
+            , Nats.none
+            , Cmd.none
+            )
+
+        Unsubscribe ->
+            ( { model
+                | subCounter =
+                    if model.subCounter > 0 then
+                        model.subCounter - 1
+                    else
+                        0
+              }
+            , Nats.none
             , Cmd.none
             )
 
@@ -53,10 +74,13 @@ update msg model =
 view : Model -> Html Msg
 view model =
     div [ style [ ( "border", "1px" ) ] ]
-        [ p [] [ text "The Subscribe button creates a new subscription to 'test.subject'." ]
+        [ p [] [ text "The Subscribe button add a new subscription to 'test.subject'." ]
         , button
             [ onClick Subscribe ]
             [ text "Subscribe" ]
+        , button
+            [ onClick Unsubscribe ]
+            [ text "Unsubscribe" ]
         , p [] [ text "Here are the received messages, prefixed with a subscription id (most recent are on top):" ]
         , ul [] <|
             List.map

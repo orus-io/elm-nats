@@ -8,7 +8,8 @@
     ],
     "exposed-modules": [
         "Nats",
-        "Nats.Protocol"
+        "Nats.Protocol",
+        "Nats.Sub"
     ],
     "dependencies": {
         "NoRedInk/elm-decode-pipeline": "3.0.0 <= v < 4.0.0",
