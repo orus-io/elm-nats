@@ -7,6 +7,7 @@ module Nats
         , listen
         , publish
         , subscribe
+        , queuesubscribe
         , request
         , merge
         )
@@ -26,17 +27,12 @@ proxy must be used. The only compatible one is
 
 # Operations
 
-@docs publish, subscribe, request
+@docs subscribe, queuesubscribe, publish, request
 
 
-# State handling
+# TEA entry points
 
-@docs init, update, merge
-
-
-# Subscriptions
-
-@docs listen
+@docs init, update, merge, listen
 
 -}
 
@@ -225,19 +221,18 @@ initSubscription subject queueGroup requestBounded translate =
         }
 
 
+{-| a basic nats subscription
+-}
 subscribe : String -> (Protocol.Message -> msg) -> NatsSub.Sub msg
 subscribe subject tagger =
     NatsSub.Subscribe subject "" tagger
 
 
+{-| a queue nats subscription
+-}
 queuesubscribe : String -> String -> (Protocol.Message -> msg) -> NatsSub.Sub msg
 queuesubscribe subject queueGroup tagger =
     NatsSub.Subscribe subject queueGroup tagger
-
-
-tuple3last2 : ( a, b, c ) -> ( b, c )
-tuple3last2 ( a, b, c ) =
-    ( b, c )
 
 
 applyNatsSub : State msg -> NatsSub.Sub msg -> ( List String, State msg, List (Cmd Msg) )
@@ -362,6 +357,9 @@ mergeNatsCmd state cmd =
             state ! []
 
 
+{-| merges nats subscriptions and commands into a Nats State, and returns
+a Cmd Msg for side effects.
+-}
 merge : State msg -> NatsSub.Sub msg -> NatsCmd.Cmd msg -> ( State msg, Cmd Msg )
 merge state sub cmd =
     let
