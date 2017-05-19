@@ -1,7 +1,7 @@
 module Main exposing (main)
 
-import Html exposing (Html, text, div, img, button, ul, li, p, input, label)
-import Html.Attributes exposing (src, width, style, type_)
+import Html exposing (Html, text, div, img, button, ul, li, p, input, label, h1, h3, h4, a)
+import Html.Attributes exposing (src, width, style, type_, class, placeholder, href)
 import Html.Events exposing (onClick, onInput)
 import Nats
 import Nats.Protocol
@@ -138,47 +138,111 @@ update msg model =
 ---- VIEW ----
 
 
+panel : List (Html Msg) -> Html Msg
+panel body =
+    div [ class "panel panel-default" ]
+        [ div [ class "panel-body" ]
+            body
+        ]
+
+
+scaffolding : List (List (Html Msg)) -> Html Msg
+scaffolding boxes =
+    div
+        [ class "container"
+        ]
+        [ div [ class "header clearfix" ]
+            [ h3 [ class "text-muted" ] [ text "Elm NATS" ]
+            ]
+        , let
+            ( col1, col2 ) =
+                List.partition (\( n, box ) -> n % 2 == 0) <|
+                    List.map2
+                        (\n box -> ( n, panel box ))
+                        (List.range 0 50)
+                        boxes
+          in
+            div [ class "row" ]
+                [ div [ class "col-sm-12" ]
+                    [ panel
+                        [ h1 [] [ text "Elm NATS demonstration mini-app" ]
+                        , p [] [ text "This mini-app demonstration pub, sub and req/rep" ]
+                        ]
+                    ]
+                , div [ class "col-sm-6" ] <|
+                    List.map Tuple.second <|
+                        col1
+                , div [ class "col-sm-6" ] <|
+                    List.map Tuple.second <|
+                        col2
+                ]
+        ]
+
+
 view : Model -> Html Msg
 view model =
-    div
-        [ style
-            [ ( "text-align", "center" )
-            ]
-        ]
-        [ p [] [ text "A Elm Nats demonstration" ]
-        , p [] [ text "Here is what we know about the NATS server" ]
-        , p []
-            [ case model.nats.serverInfo of
-                Just info ->
-                    ul []
-                        [ li [] [ text ("Server ID: " ++ info.server_id) ]
-                        , li [] [ text ("Version: " ++ info.version) ]
-                        , li [] [ text ("Go version: " ++ info.go) ]
-                        ]
+    let
+        ready =
+            case model.nats.serverInfo of
+                Just _ ->
+                    True
 
                 Nothing ->
-                    text "Nothing !"
-            ]
-        , p [] [ text "The Publish button Each push on Subscribe creates a new subscription." ]
-        , button
-            [ onClick Publish ]
-            [ text "Publish" ]
-        , div []
-            [ text "A req/rep demo"
-            , label []
-                [ text "Your name: "
-                , input [ type_ "text", onInput InputText ] []
-                ]
-            , button [ onClick SendRequest ] [ text "Say hello !" ]
-            , case model.response of
-                Just response ->
-                    text response
+                    False
+    in
+        scaffolding <|
+            [ [ h4 [] [ text "Here is what we know about the NATS server" ]
+              , case model.nats.serverInfo of
+                    Just info ->
+                        ul []
+                            [ li [] [ text ("Server ID: " ++ info.server_id) ]
+                            , li [] [ text ("Version: " ++ info.version) ]
+                            , li [] [ text ("Go version: " ++ info.go) ]
+                            ]
 
-                Nothing ->
-                    text ""
+                    Nothing ->
+                        div [ class "alert alert-warning" ]
+                            [ text "Problem: No connection established (yet?). This app need a running "
+                            , a [ href "https://github.com/nats-io/gnatsd/" ]
+                                [ text "gnatsd" ]
+                            , text " and a running "
+                            , a [ href "https://github.com/orus-io/nats-websocket-gw" ]
+                                [ text "nats-websocket-gw" ]
+                            , text " --no-origin-check"
+                            ]
+              ]
+            , [ h4 [] [ text "Publish" ]
+              , p [] [ text "The Publish button sends 'Hi' on 'test.subject'." ]
+              , button
+                    [ class "btn btn-primary"
+                    , onClick Publish
+                    ]
+                    [ text "Publish" ]
+              ]
+            , [ h4 [] [ text "A req/rep demo" ]
+              , input
+                    [ class "form-control"
+                    , type_ "text"
+                    , onInput InputText
+                    , placeholder "Your name"
+                    ]
+                    []
+              , button
+                    [ class "btn btn-primary"
+                    , onClick SendRequest
+                    ]
+                    [ text "Say hello !" ]
+              , case model.response of
+                    Just response ->
+                        text response
+
+                    Nothing ->
+                        text ""
+              ]
+            , [ SubComp.view model.subcomp
+                    |> Html.map SubCompMsg
+              ]
             ]
-        , SubComp.view model.subcomp |> Html.map SubCompMsg
-        ]
 
 
 

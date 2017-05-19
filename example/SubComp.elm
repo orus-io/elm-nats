@@ -1,7 +1,7 @@
 module SubComp exposing (..)
 
-import Html exposing (Html, text, div, img, button, ul, li, p)
-import Html.Attributes exposing (src, width, style)
+import Html exposing (Html, text, div, img, button, ul, li, p, h4)
+import Html.Attributes exposing (src, width, style, class)
 import Html.Events exposing (onClick)
 import Nats
 import Nats.Protocol exposing (Message)
@@ -74,14 +74,20 @@ update msg model =
 
 view : Model -> Html Msg
 view model =
-    div [ style [ ( "border", "1px" ) ] ]
-        [ p [] [ text "The Subscribe button add a new subscription to 'test.subject'." ]
+    div []
+        [ h4 [] [ text "Subscribe" ]
+        , p [] [ text "The Subscribe button add a new subscription to 'test.subject'." ]
         , button
-            [ onClick Subscribe ]
+            [ class "btn btn-default"
+            , onClick Subscribe
+            ]
             [ text "Subscribe" ]
         , button
-            [ onClick Unsubscribe ]
+            [ class "btn btn-default"
+            , onClick Unsubscribe
+            ]
             [ text "Unsubscribe" ]
+        , p [] [ text <| "Current subscriptions: " ++ toString model.subCounter ]
         , p [] [ text "Here are the received messages, prefixed with a subscription id (most recent are on top):" ]
         , ul [] <|
             List.map
