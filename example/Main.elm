@@ -5,6 +5,7 @@ import Html.Attributes exposing (src, width, style, type_)
 import Html.Events exposing (onClick, onInput)
 import Nats
 import Nats.Protocol
+import Nats.Cmd as NatsCmd
 import Nats.Sub as NatsSub
 import SubComp
 
@@ -28,7 +29,7 @@ init =
           , inputText = ""
           , response = Nothing
           }
-        , Nats.none
+        , NatsCmd.none
         , Cmd.none
         )
 
@@ -53,7 +54,7 @@ receiveResponse message =
     ReceiveResponse message.data
 
 
-mergeNats : ( Model, Nats.NatsCmd Msg, Cmd Msg ) -> ( Model, Cmd Msg )
+mergeNats : ( Model, NatsCmd.Cmd Msg, Cmd Msg ) -> ( Model, Cmd Msg )
 mergeNats ( model, natsCmd, cmd ) =
     let
         ( natsState, extraCmd ) =
@@ -77,7 +78,7 @@ update msg model =
                     ( { model
                         | nats = nats
                       }
-                    , Nats.none
+                    , NatsCmd.none
                     , Cmd.map NatsMsg natsCmd
                     )
 
@@ -89,7 +90,7 @@ update msg model =
                     ( { model
                         | subcomp = subcomp
                       }
-                    , (Nats.map SubCompMsg subcompNatsCmd)
+                    , (NatsCmd.map SubCompMsg subcompNatsCmd)
                     , (Cmd.map SubCompMsg subcompCmd)
                     )
 
@@ -109,7 +110,7 @@ update msg model =
                 ( { model
                     | inputText = text
                   }
-                , Nats.none
+                , NatsCmd.none
                 , Cmd.none
                 )
 
@@ -121,13 +122,13 @@ update msg model =
 
             ReceiveResponse response ->
                 ( { model | response = Just response }
-                , Nats.none
+                , NatsCmd.none
                 , Cmd.none
                 )
 
             NoOp ->
                 ( model
-                , Nats.none
+                , NatsCmd.none
                 , Cmd.none
                 )
         )

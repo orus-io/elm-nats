@@ -3,8 +3,10 @@
 This library is a pure Elm implementation of the NATS client protocol on top
 a websocket.
 
-It clearly an alpha version of what I have in mind, which means the API is likely
-to change.
+It works by adding new Nats.Cmd and Nats.Sub to TEA, and merging them into
+classic Cmd and Sub in update and subscriptions.
+
+It clearly an alpha version, which means the API is likely to change.
 
 ## Prerequisites
 
@@ -16,13 +18,14 @@ to change.
 ## Setup
 
 NATS subscriptions handling is a stateful business, which is all done by the
-Nats module. You need to wire it into your application though.
+Nats module. You need to wire it into your application.
 
 1. Import the Nats module
 
     ```elm
     import Nats
     import Nats.Protocol
+    import Nats.Cmd as NatsCmd
     import Nats.Sub as NatsSub
     ```
 
@@ -45,11 +48,19 @@ Nats module. You need to wire it into your application though.
         }
     ```
 
+1. Add a NatsMsg tag to your Msg type:
+
+   ```elm
+   type Msg
+       = DoSomething
+       | NatsMsg Nats.Msg
+   ```
+
 1. Define a "mergeNats" function that can post-process your model and nats
    subscriptions and commands to give you a final state and commands:
 
    ```elm
-   mergeNats : ( Model, Nats.NatsCmd Msg, Cmd Msg ) -> ( Model, Cmd Msg )
+   mergeNats : ( Model, NatsCmd.Cmd Msg, Cmd Msg ) -> ( Model, Cmd Msg )
    mergeNats ( model, natsCmd, cmd ) =
        let
            ( natsState, extraCmd ) =
@@ -61,16 +72,9 @@ Nats module. You need to wire it into your application though.
                ! [ cmd, Cmd.map NatsMsg extraCmd ]
    ```
 
-1. Add a NatsMsg tag to your Msg type:
-
-   ```elm
-   type Msg
-       = DoSomething
-       | NatsMsg Nats.Msg
-   ```
 
 1. Change your update function to apply mergeNats after the classic 'case msg of',
-   which now returns ( model, natsCmd, cmd ) instead of ( model, cmd ):
+   which now returns ( Model, NatsCmd.Cmd Msg, Cmd Msg) instead of ( Model, Cmd Msg ):
 
    ```elm
    update : Msg -> Model -> ( Model, Cmd Msg )
@@ -79,7 +83,7 @@ Nats module. You need to wire it into your application though.
            (case msg of
                NoOp ->
                    
-                   ( model, Nats.none, Cmd.none )
+                   ( model, NatsCmd.none, Cmd.none )
                NatsMsg natsMsg ->
                    let
                        ( nats, natsCmd ) =
@@ -88,7 +92,7 @@ Nats module. You need to wire it into your application though.
                        ( { model
                            | nats = nats
                          }
-                       , Nats.none
+                       , NatsCmd.none
                        , Cmd.map NatsMsg natsCmd
                        )
            )

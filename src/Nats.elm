@@ -1,7 +1,6 @@
 module Nats
     exposing
         ( State
-        , NatsCmd
         , Msg
         , init
         , update
@@ -9,9 +8,6 @@ module Nats
         , publish
         , subscribe
         , request
-        , map
-        , batch
-        , none
         , merge
         )
 
@@ -25,7 +21,7 @@ proxy must be used. The only compatible one is
 
 # Types
 
-@docs State, NatsCmd, Msg
+@docs State, Msg
 
 
 # Operations
@@ -42,21 +38,17 @@ proxy must be used. The only compatible one is
 
 @docs listen
 
-
-# NatsCmd
-
-@docs map, batch, none
-
 -}
 
 import Debug
 import WebSocket
 import Dict exposing (Dict)
 import Time
-import Nats.Protocol as Protocol
 import Random
 import Random.Char
 import Random.String
+import Nats.Protocol as Protocol
+import Nats.Cmd as NatsCmd
 import Nats.Sub as NatsSub
 
 
@@ -67,15 +59,6 @@ type Msg
     | ReceptionError String
     | RequestInbox ( String, String ) String String
     | KeepAlive Time.Time
-
-
-{-| A Nats command
--}
-type NatsCmd msg
-    = Publish String String
-    | Request String String (Protocol.Message -> msg)
-    | Batch (List (NatsCmd msg))
-    | None
 
 
 type alias Sid =
@@ -335,10 +318,10 @@ mergeNatsSub state sub =
 
 {-| Apply NatsCmd in the Nats State and return somd actual Cmd
 -}
-mergeNatsCmd : State msg -> NatsCmd msg -> ( State msg, Cmd Msg )
+mergeNatsCmd : State msg -> NatsCmd.Cmd msg -> ( State msg, Cmd Msg )
 mergeNatsCmd state cmd =
     case cmd of
-        Publish subject data ->
+        NatsCmd.Publish subject data ->
             state
                 ! [ send state <|
                         Protocol.PUB
@@ -348,7 +331,7 @@ mergeNatsCmd state cmd =
                             }
                   ]
 
-        Request subject data translate ->
+        NatsCmd.Request subject data translate ->
             -- prepare a subject-less subscription
             -- get a random id
             let
@@ -361,7 +344,7 @@ mergeNatsCmd state cmd =
                             Random.String.string 12 Random.Char.latin
                       ]
 
-        Batch natsCmds ->
+        NatsCmd.Batch natsCmds ->
             let
                 folder natsCmd ( state, cmds ) =
                     let
@@ -375,11 +358,11 @@ mergeNatsCmd state cmd =
             in
                 newState ! cmds
 
-        None ->
+        NatsCmd.None ->
             state ! []
 
 
-merge : State msg -> NatsSub.Sub msg -> NatsCmd msg -> ( State msg, Cmd Msg )
+merge : State msg -> NatsSub.Sub msg -> NatsCmd.Cmd msg -> ( State msg, Cmd Msg )
 merge state sub cmd =
     let
         ( subState, subCmd ) =
@@ -413,45 +396,13 @@ setupSubscription state subscription =
 
 {-| Publish a message on a subject
 -}
-publish : String -> String -> NatsCmd msg
+publish : String -> String -> NatsCmd.Cmd msg
 publish subject data =
-    Publish subject data
+    NatsCmd.Publish subject data
 
 
 {-| Send a request an return the response in a msg
 -}
-request : String -> String -> (Protocol.Message -> msg) -> NatsCmd msg
+request : String -> String -> (Protocol.Message -> msg) -> NatsCmd.Cmd msg
 request =
-    Request
-
-
-{-| Transform the message produced by some Subscription
--}
-map : (msg1 -> msg) -> NatsCmd msg1 -> NatsCmd msg
-map msg1ToMsg cmd =
-    case cmd of
-        Publish subject data ->
-            Publish subject data
-
-        Request subject data translate ->
-            Request subject data (translate >> msg1ToMsg)
-
-        Batch natsCmds ->
-            Batch <| List.map (map msg1ToMsg) natsCmds
-
-        None ->
-            None
-
-
-{-| batch several NatsCmd into one
--}
-batch : List (NatsCmd msg) -> NatsCmd msg
-batch natsCmds =
-    Batch natsCmds
-
-
-{-| A NatsCmd that does nothing
--}
-none : NatsCmd msg
-none =
-    None
+    NatsCmd.Request

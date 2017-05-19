@@ -8,6 +8,7 @@
     ],
     "exposed-modules": [
         "Nats",
+        "Nats.Cmd",
         "Nats.Protocol",
         "Nats.Sub"
     ],

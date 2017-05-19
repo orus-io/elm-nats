@@ -5,6 +5,7 @@ import Html.Attributes exposing (src, width, style)
 import Html.Events exposing (onClick)
 import Nats
 import Nats.Protocol exposing (Message)
+import Nats.Cmd as NatsCmd
 import Nats.Sub as NatsSub
 
 
@@ -39,14 +40,14 @@ natsSubscriptions model =
         |> NatsSub.batch
 
 
-update : Msg -> Model -> ( Model, Nats.NatsCmd Msg, Cmd Msg )
+update : Msg -> Model -> ( Model, NatsCmd.Cmd Msg, Cmd Msg )
 update msg model =
     case msg of
         Subscribe ->
             ( { model
                 | subCounter = model.subCounter + 1
               }
-            , Nats.none
+            , NatsCmd.none
             , Cmd.none
             )
 
@@ -58,7 +59,7 @@ update msg model =
                     else
                         0
               }
-            , Nats.none
+            , NatsCmd.none
             , Cmd.none
             )
 
@@ -66,7 +67,7 @@ update msg model =
             ( { model
                 | received = (toString n ++ ": " ++ data) :: model.received
               }
-            , Nats.none
+            , NatsCmd.none
             , Cmd.none
             )
 
