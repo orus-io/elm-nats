@@ -43,6 +43,7 @@ import Time
 import Random
 import Random.Char
 import Random.String
+import Task
 import Nats.Protocol as Protocol
 import Nats.Cmd as NatsCmd
 import Nats.Sub as NatsSub
@@ -54,6 +55,7 @@ type Msg
     = Receive Protocol.Operation
     | ReceptionError String
     | RequestInbox ( String, String ) String String
+    | RequestResponse Sid Protocol.Message
     | KeepAlive Time.Time
 
 
@@ -77,6 +79,7 @@ type alias Subscription msg =
 -}
 type alias State msg =
     { url : String
+    , tagger : Msg -> msg
     , keepAlive : Time.Time
     , sidCounter : Int
     , subscriptions : Dict Sid (Subscription msg)
@@ -96,7 +99,10 @@ receive state convert operation =
                 Protocol.MSG sid natsMsg ->
                     case Dict.get sid state.subscriptions of
                         Just sub ->
-                            sub.translate natsMsg
+                            if sub.requestBounded then
+                                convert <| RequestResponse sid natsMsg
+                            else
+                                sub.translate natsMsg
 
                         Nothing ->
                             convert <| Receive operation
@@ -110,21 +116,22 @@ It takes a list of all the active subscriptions from all the application
 parts, which are used to translate the WebSocket message into the message
 type each component need.
 -}
-listen : State msg -> (Msg -> msg) -> Sub msg
-listen state convert =
+listen : State msg -> Sub msg
+listen state =
     Sub.batch
         [ WebSocket.listen
             state.url
-            (Debug.log "Receiving" >> Protocol.parseOperation >> receive state convert)
-        , Time.every state.keepAlive (KeepAlive >> convert)
+            (Debug.log "Receiving" >> Protocol.parseOperation >> receive state state.tagger)
+        , Time.every state.keepAlive (KeepAlive >> state.tagger)
         ]
 
 
 {-| Initialize a Nats State for a given websocket URL
 -}
-init : String -> State msg
-init url =
+init : (Msg -> msg) -> String -> State msg
+init tagger url =
     { url = url
+    , tagger = tagger
     , keepAlive = 5 * Time.minute
     , sidCounter = 0
     , subscriptions = Dict.empty
@@ -146,17 +153,22 @@ sendAll state ops =
         |> WebSocket.send state.url
 
 
+sendMsg : msg -> Cmd msg
+sendMsg msg =
+    Task.perform identity <| Task.succeed msg
+
+
 {-| The update function
 Will make sure PING commands from the server are honored with a PONG,
 and send a PING to keep the connection alive.
 -}
-update : Msg -> State msg -> ( State msg, Cmd Msg )
+update : Msg -> State msg -> ( State msg, Cmd msg )
 update msg state =
     case msg of
         Receive op ->
             case op of
                 Protocol.PING ->
-                    state ! [ send state Protocol.PONG ]
+                    state ! [ Cmd.map state.tagger <| send state Protocol.PONG ]
 
                 Protocol.INFO serverInfo ->
                     { state | serverInfo = Just serverInfo } ! []
@@ -177,22 +189,34 @@ update msg state =
                         { state
                             | subscriptions = Dict.insert sid newSub state.subscriptions
                         }
-                            ! [ sendAll state
-                                    [ Protocol.SUB newSub.subject newSub.queueGroup newSub.sid
-                                    , Protocol.PUB
-                                        { subject = subject
-                                        , replyTo = newSub.subject
-                                        , data = data
-                                        }
-                                    ]
+                            ! [ Cmd.map state.tagger <|
+                                    sendAll state
+                                        [ Protocol.SUB newSub.subject newSub.queueGroup newSub.sid
+                                        , Protocol.PUB
+                                            { subject = subject
+                                            , replyTo = newSub.subject
+                                            , data = data
+                                            }
+                                        ]
                               ]
 
                 Nothing ->
                     -- TODO report an error somehow ? crash the app ?
                     state ! []
 
+        RequestResponse sid natsMsg ->
+            case Dict.get sid state.subscriptions of
+                Just sub ->
+                    { state
+                        | subscriptions = Dict.remove sid state.subscriptions
+                    }
+                        ! [ sendMsg <| sub.translate natsMsg ]
+
+                Nothing ->
+                    state ! []
+
         KeepAlive _ ->
-            state ! [ send state Protocol.PING ]
+            state ! [ Cmd.map state.tagger <| send state Protocol.PING ]
 
 
 splitSubject : String -> ( String, String )
@@ -360,7 +384,7 @@ mergeNatsCmd state cmd =
 {-| merges nats subscriptions and commands into a Nats State, and returns
 a Cmd Msg for side effects.
 -}
-merge : State msg -> NatsSub.Sub msg -> NatsCmd.Cmd msg -> ( State msg, Cmd Msg )
+merge : State msg -> NatsSub.Sub msg -> NatsCmd.Cmd msg -> ( State msg, Cmd msg )
 merge state sub cmd =
     let
         ( subState, subCmd ) =
@@ -369,7 +393,7 @@ merge state sub cmd =
         ( cmdState, cmdCmd ) =
             mergeNatsCmd subState cmd
     in
-        ( cmdState, Cmd.batch [ subCmd, cmdCmd ] )
+        ( cmdState, Cmd.map state.tagger <| Cmd.batch [ subCmd, cmdCmd ] )
 
 
 {-| Add a subscription to the State

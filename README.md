@@ -39,15 +39,6 @@ Nats module. You need to wire it into your application.
         }
     ```
 
-1. Initialize the State with the websocket url. If working locally with
-   nats-websocket-gw, it should be "ws://localhost:8910/nats":
-
-    ```elm
-    init =
-        { nats: Nats.init "WEBSOCKET_URL"
-        }
-    ```
-
 1. Add a NatsMsg tag to your Msg type:
 
    ```elm
@@ -55,6 +46,16 @@ Nats module. You need to wire it into your application.
        = DoSomething
        | NatsMsg Nats.Msg
    ```
+
+1. Initialize the State with the websocket url. If working locally with
+   nats-websocket-gw, it should be "ws://localhost:8910/nats":
+
+    ```elm
+    init =
+        { nats: Nats.init NatsMsg "WEBSOCKET_URL"
+        }
+    ```
+
 
 1. Define a "mergeNats" function that can post-process your model and nats
    subscriptions and commands to give you a final state and commands:
@@ -69,7 +70,7 @@ Nats module. You need to wire it into your application.
            { model
                | nats = natsState
            }
-               ! [ cmd, Cmd.map NatsMsg extraCmd ]
+               ! [ cmd, extraCmd ]
    ```
 
 
@@ -93,7 +94,7 @@ Nats module. You need to wire it into your application.
                            | nats = nats
                          }
                        , NatsCmd.none
-                       , Cmd.map NatsMsg natsCmd
+                       , natsCmd
                        )
            )
                    
@@ -103,7 +104,7 @@ Nats module. You need to wire it into your application.
 
    ```elm
    subscriptions model =
-       Nats.listen model.state NatsMsg
+       Nats.listen model.state
 
    natsSubscriptions model =
        NatsSub.none

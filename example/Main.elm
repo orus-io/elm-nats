@@ -24,7 +24,7 @@ type alias Model =
 init : ( Model, Cmd Msg )
 init =
     mergeNats
-        ( { nats = Nats.init "ws://localhost:8910/nats"
+        ( { nats = Nats.init NatsMsg "ws://localhost:8910/nats"
           , subcomp = SubComp.init
           , inputText = ""
           , response = Nothing
@@ -63,7 +63,7 @@ mergeNats ( model, natsCmd, cmd ) =
         { model
             | nats = natsState
         }
-            ! [ cmd, Cmd.map NatsMsg extraCmd ]
+            ! [ cmd, extraCmd ]
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -79,7 +79,7 @@ update msg model =
                         | nats = nats
                       }
                     , NatsCmd.none
-                    , Cmd.map NatsMsg natsCmd
+                    , natsCmd
                     )
 
             SubCompMsg subcompMsg ->
@@ -209,4 +209,4 @@ natsSubscriptions model =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    Nats.listen model.nats NatsMsg
+    Nats.listen model.nats
