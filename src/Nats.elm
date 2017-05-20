@@ -181,7 +181,28 @@ update msg state =
                     state ! [ Cmd.map state.tagger <| send state Protocol.PONG ]
 
                 Protocol.INFO serverInfo ->
-                    { state | serverInfo = Just serverInfo } ! []
+                    -- A (re)connection. Update the server info and reinitialize
+                    -- all the subscriptions
+                    { state | serverInfo = Just serverInfo }
+                        ! List.append
+                            (List.map
+                                (\sub ->
+                                    Protocol.SUB sub.subject sub.queueGroup sub.sid
+                                        |> send state
+                                        |> Cmd.map state.tagger
+                                )
+                             <|
+                                Dict.values state.subscriptions
+                            )
+                            (List.map
+                                (\req ->
+                                    Protocol.SUB req.inbox "" req.sid
+                                        |> send state
+                                        |> Cmd.map state.tagger
+                                )
+                             <|
+                                Dict.values state.requests
+                            )
 
                 _ ->
                     state ! []
