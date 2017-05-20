@@ -16,13 +16,14 @@ This module mimics Platform.Cmd, but for Nats commands
 
 import Nats.Protocol as Protocol
 import Nats.Errors exposing (Timeout)
+import Time exposing (Time)
 
 
 {-| A Nats command
 -}
 type Cmd msg
     = Publish String String
-    | Request String String (Result Timeout Protocol.Message -> msg)
+    | Request Time String String (Result Timeout Protocol.Message -> msg)
     | Batch (List (Cmd msg))
     | None
 
@@ -35,8 +36,8 @@ map aToMsg cmd =
         Publish subject data ->
             Publish subject data
 
-        Request subject data tagger ->
-            Request subject data (tagger >> aToMsg)
+        Request timeout subject data tagger ->
+            Request timeout subject data (tagger >> aToMsg)
 
         Batch natsCmds ->
             Batch <| List.map (map aToMsg) natsCmds

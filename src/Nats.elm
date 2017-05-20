@@ -9,6 +9,7 @@ module Nats
         , subscribe
         , queuesubscribe
         , request
+        , requestWithTimeout
         , merge
         )
 
@@ -27,7 +28,7 @@ proxy must be used. The only compatible one is
 
 # Operations
 
-@docs subscribe, queuesubscribe, publish, request
+@docs subscribe, queuesubscribe, publish, request, requestWithTimeout
 
 
 # TEA entry points
@@ -48,6 +49,11 @@ import Nats.Protocol as Protocol
 import Nats.Cmd as NatsCmd
 import Nats.Sub as NatsSub
 import Nats.Errors exposing (Timeout)
+
+
+defaultTimeout : Time
+defaultTimeout =
+    30 * Time.second
 
 
 {-| Type of message the update function takes
@@ -77,6 +83,7 @@ type alias Subscription msg =
 
 type alias Request msg =
     { inbox : String
+    , timeout : Time
     , sid : Sid
     , tagger : Result Timeout Protocol.Message -> msg
     }
@@ -132,8 +139,12 @@ listen state =
             state.url
             (Debug.log "Receiving" >> Protocol.parseOperation >> receive state state.tagger)
         ]
-            ++ (List.map (RequestTimeout >> Time.every (30 * Time.second) >> Sub.map state.tagger) <|
-                    Dict.keys state.requests
+            ++ (List.map
+                    (\req ->
+                        RequestTimeout req.sid |> Time.every req.timeout |> Sub.map state.tagger
+                    )
+                <|
+                    Dict.values state.requests
                )
 
 
@@ -285,9 +296,10 @@ initSubscription subject queueGroup tagger =
         }
 
 
-initRequest : (Result Timeout Protocol.Message -> msg) -> Request msg
-initRequest tagger =
+initRequest : Time -> (Result Timeout Protocol.Message -> msg) -> Request msg
+initRequest timeout tagger =
     { inbox = ""
+    , timeout = timeout
     , sid = ""
     , tagger = tagger
     }
@@ -398,12 +410,12 @@ mergeNatsCmd state cmd =
                             }
                   ]
 
-        NatsCmd.Request subject data tagger ->
+        NatsCmd.Request timeout subject data tagger ->
             -- prepare a subject-less subscription
             -- get a random id
             let
                 ( req, newState ) =
-                    setupRequest state <| initRequest tagger
+                    setupRequest state <| initRequest timeout tagger
             in
                 newState
                     ! [ Random.generate (RequestInbox ( subject, data ) req.sid) <|
@@ -487,8 +499,15 @@ publish subject data =
     NatsCmd.Publish subject data
 
 
-{-| Send a request an return the response in a msg
+{-| Send a request
 -}
 request : String -> String -> (Result Timeout Protocol.Message -> msg) -> NatsCmd.Cmd msg
 request =
+    NatsCmd.Request defaultTimeout
+
+
+{-| Send a request with a custom timeout
+-}
+requestWithTimeout : Time -> String -> String -> (Result Timeout Protocol.Message -> msg) -> NatsCmd.Cmd msg
+requestWithTimeout =
     NatsCmd.Request
