@@ -56,7 +56,6 @@ type Msg
     | ReceptionError String
     | RequestInbox ( String, String ) String String
     | RequestResponse Sid Protocol.Message
-    | KeepAlive Time.Time
 
 
 type alias Sid =
@@ -80,7 +79,6 @@ type alias Subscription msg =
 type alias State msg =
     { url : String
     , tagger : Msg -> msg
-    , keepAlive : Time.Time
     , sidCounter : Int
     , subscriptions : Dict Sid (Subscription msg)
     , serverInfo : Maybe Protocol.ServerInfo
@@ -122,7 +120,6 @@ listen state =
         [ WebSocket.listen
             state.url
             (Debug.log "Receiving" >> Protocol.parseOperation >> receive state state.tagger)
-        , Time.every state.keepAlive (KeepAlive >> state.tagger)
         ]
 
 
@@ -132,7 +129,6 @@ init : (Msg -> msg) -> String -> State msg
 init tagger url =
     { url = url
     , tagger = tagger
-    , keepAlive = 5 * Time.minute
     , sidCounter = 0
     , subscriptions = Dict.empty
     , serverInfo = Nothing
@@ -160,7 +156,6 @@ sendMsg msg =
 
 {-| The update function
 Will make sure PING commands from the server are honored with a PONG,
-and send a PING to keep the connection alive.
 -}
 update : Msg -> State msg -> ( State msg, Cmd msg )
 update msg state =
@@ -214,9 +209,6 @@ update msg state =
 
                 Nothing ->
                     state ! []
-
-        KeepAlive _ ->
-            state ! [ Cmd.map state.tagger <| send state Protocol.PING ]
 
 
 splitSubject : String -> ( String, String )
