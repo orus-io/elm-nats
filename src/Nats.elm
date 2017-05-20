@@ -71,7 +71,7 @@ type alias Subscription msg =
     , requestBounded : Bool
     , queueGroup : String
     , sid : Sid
-    , translate : Protocol.Message -> msg
+    , tagger : Protocol.Message -> msg
     }
 
 
@@ -89,10 +89,10 @@ type alias State msg =
 
 
 receive : State msg -> (Msg -> msg) -> Result String Protocol.Operation -> msg
-receive state convert operation =
+receive state tagger operation =
     case operation of
         Err err ->
-            convert <| ReceptionError err
+            tagger <| ReceptionError err
 
         Ok operation ->
             case operation of
@@ -100,20 +100,20 @@ receive state convert operation =
                     case Dict.get sid state.subscriptions of
                         Just sub ->
                             if sub.requestBounded then
-                                convert <| RequestResponse sid natsMsg
+                                tagger <| RequestResponse sid natsMsg
                             else
-                                sub.translate natsMsg
+                                sub.tagger natsMsg
 
                         Nothing ->
-                            convert <| Receive operation
+                            tagger <| Receive operation
 
                 _ ->
-                    convert <| Receive operation
+                    tagger <| Receive operation
 
 
 {-| Creates a Sub for the whole applications
 It takes a list of all the active subscriptions from all the application
-parts, which are used to translate the WebSocket message into the message
+parts, which are used to tag the WebSocket message into the message
 type each component need.
 -}
 listen : State msg -> Sub msg
@@ -210,7 +210,7 @@ update msg state =
                     { state
                         | subscriptions = Dict.remove sid state.subscriptions
                     }
-                        ! [ sendMsg <| sub.translate natsMsg ]
+                        ! [ sendMsg <| sub.tagger natsMsg ]
 
                 Nothing ->
                     state ! []
@@ -231,7 +231,7 @@ splitSubject s =
 
 
 initSubscription : String -> String -> Bool -> (Protocol.Message -> msg) -> Subscription msg
-initSubscription subject queueGroup requestBounded translate =
+initSubscription subject queueGroup requestBounded tagger =
     let
         ( cleanSubject, tag ) =
             splitSubject subject
@@ -241,7 +241,7 @@ initSubscription subject queueGroup requestBounded translate =
         , requestBounded = requestBounded
         , queueGroup = queueGroup
         , sid = ""
-        , translate = translate
+        , tagger = tagger
         }
 
 
@@ -350,13 +350,13 @@ mergeNatsCmd state cmd =
                             }
                   ]
 
-        NatsCmd.Request subject data translate ->
+        NatsCmd.Request subject data tagger ->
             -- prepare a subject-less subscription
             -- get a random id
             let
                 ( sub, newState, cmd ) =
                     setupSubscription state <|
-                        initSubscription "" "" True translate
+                        initSubscription "" "" True tagger
             in
                 newState
                     ! [ Random.generate (RequestInbox ( subject, data ) sub.sid) <|
