@@ -7,6 +7,7 @@ import Nats
 import Nats.Protocol
 import Nats.Cmd as NatsCmd
 import Nats.Sub as NatsSub
+import Nats.Errors exposing (Timeout)
 import SubComp
 
 
@@ -45,13 +46,19 @@ type Msg
     | Publish
     | InputText String
     | SendRequest
+    | RequestError
     | ReceiveResponse String
     | HandleRequest Nats.Protocol.Message
 
 
-receiveResponse : Nats.Protocol.Message -> Msg
-receiveResponse message =
-    ReceiveResponse message.data
+receiveResponse : Result Timeout Nats.Protocol.Message -> Msg
+receiveResponse result =
+    case result of
+        Ok message ->
+            ReceiveResponse message.data
+
+        Err _ ->
+            RequestError
 
 
 mergeNats : ( Model, NatsCmd.Cmd Msg, Cmd Msg ) -> ( Model, Cmd Msg )
@@ -117,6 +124,12 @@ update msg model =
             SendRequest ->
                 ( model
                 , Nats.request "say.hello.to.me" model.inputText receiveResponse
+                , Cmd.none
+                )
+
+            RequestError ->
+                ( { model | response = Just "Sorry, timeout error... Try again later?" }
+                , NatsCmd.none
                 , Cmd.none
                 )
 

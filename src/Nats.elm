@@ -39,7 +39,7 @@ proxy must be used. The only compatible one is
 import Debug
 import WebSocket
 import Dict exposing (Dict)
-import Time
+import Time exposing (Time)
 import Random
 import Random.Char
 import Random.String
@@ -47,6 +47,7 @@ import Task
 import Nats.Protocol as Protocol
 import Nats.Cmd as NatsCmd
 import Nats.Sub as NatsSub
+import Nats.Errors exposing (Timeout)
 
 
 {-| Type of message the update function takes
@@ -56,6 +57,7 @@ type Msg
     | ReceptionError String
     | RequestInbox ( String, String ) String String
     | RequestResponse Sid Protocol.Message
+    | RequestTimeout Sid Time
 
 
 type alias Sid =
@@ -67,10 +69,16 @@ type alias Sid =
 type alias Subscription msg =
     { subject : String
     , tag : String
-    , requestBounded : Bool
     , queueGroup : String
     , sid : Sid
     , tagger : Protocol.Message -> msg
+    }
+
+
+type alias Request msg =
+    { inbox : String
+    , sid : Sid
+    , tagger : Result Timeout Protocol.Message -> msg
     }
 
 
@@ -81,6 +89,7 @@ type alias State msg =
     , tagger : Msg -> msg
     , sidCounter : Int
     , subscriptions : Dict Sid (Subscription msg)
+    , requests : Dict Sid (Request msg)
     , serverInfo : Maybe Protocol.ServerInfo
     , inboxPrefix : String
     }
@@ -97,13 +106,15 @@ receive state tagger operation =
                 Protocol.MSG sid natsMsg ->
                     case Dict.get sid state.subscriptions of
                         Just sub ->
-                            if sub.requestBounded then
-                                tagger <| RequestResponse sid natsMsg
-                            else
-                                sub.tagger natsMsg
+                            sub.tagger natsMsg
 
                         Nothing ->
-                            tagger <| Receive operation
+                            case Dict.get sid state.requests of
+                                Just req ->
+                                    tagger <| RequestResponse sid natsMsg
+
+                                Nothing ->
+                                    tagger <| Receive operation
 
                 _ ->
                     tagger <| Receive operation
@@ -116,11 +127,14 @@ type each component need.
 -}
 listen : State msg -> Sub msg
 listen state =
-    Sub.batch
+    Sub.batch <|
         [ WebSocket.listen
             state.url
             (Debug.log "Receiving" >> Protocol.parseOperation >> receive state state.tagger)
         ]
+            ++ (List.map (RequestTimeout >> Time.every (30 * Time.second) >> Sub.map state.tagger) <|
+                    Dict.keys state.requests
+               )
 
 
 {-| Initialize a Nats State for a given websocket URL
@@ -131,6 +145,7 @@ init tagger url =
     , tagger = tagger
     , sidCounter = 0
     , subscriptions = Dict.empty
+    , requests = Dict.empty
     , serverInfo = Nothing
     , inboxPrefix = "_INBOX."
     }
@@ -175,21 +190,23 @@ update msg state =
             state ! []
 
         RequestInbox ( subject, data ) sid inboxSuffix ->
-            case Dict.get sid state.subscriptions of
-                Just sub ->
+            case Dict.get sid state.requests of
+                Just req ->
                     let
-                        newSub =
-                            { sub | subject = state.inboxPrefix ++ inboxSuffix }
+                        newReq =
+                            { req
+                                | inbox = state.inboxPrefix ++ inboxSuffix
+                            }
                     in
                         { state
-                            | subscriptions = Dict.insert sid newSub state.subscriptions
+                            | requests = Dict.insert sid newReq state.requests
                         }
                             ! [ Cmd.map state.tagger <|
                                     sendAll state
-                                        [ Protocol.SUB newSub.subject newSub.queueGroup newSub.sid
+                                        [ Protocol.SUB newReq.inbox "" newReq.sid
                                         , Protocol.PUB
                                             { subject = subject
-                                            , replyTo = newSub.subject
+                                            , replyTo = newReq.inbox
                                             , data = data
                                             }
                                         ]
@@ -200,12 +217,23 @@ update msg state =
                     state ! []
 
         RequestResponse sid natsMsg ->
-            case Dict.get sid state.subscriptions of
-                Just sub ->
+            case Dict.get sid state.requests of
+                Just req ->
                     { state
-                        | subscriptions = Dict.remove sid state.subscriptions
+                        | requests = Dict.remove sid state.requests
                     }
-                        ! [ sendMsg <| sub.tagger natsMsg ]
+                        ! [ sendMsg <| req.tagger (Ok natsMsg) ]
+
+                Nothing ->
+                    state ! []
+
+        RequestTimeout sid time ->
+            case Dict.get sid state.requests of
+                Just req ->
+                    { state
+                        | requests = Dict.remove sid state.requests
+                    }
+                        ! [ sendMsg <| req.tagger (Err time) ]
 
                 Nothing ->
                     state ! []
@@ -222,19 +250,26 @@ splitSubject s =
         )
 
 
-initSubscription : String -> String -> Bool -> (Protocol.Message -> msg) -> Subscription msg
-initSubscription subject queueGroup requestBounded tagger =
+initSubscription : String -> String -> (Protocol.Message -> msg) -> Subscription msg
+initSubscription subject queueGroup tagger =
     let
         ( cleanSubject, tag ) =
             splitSubject subject
     in
         { subject = cleanSubject
         , tag = tag
-        , requestBounded = requestBounded
         , queueGroup = queueGroup
         , sid = ""
         , tagger = tagger
         }
+
+
+initRequest : (Result Timeout Protocol.Message -> msg) -> Request msg
+initRequest tagger =
+    { inbox = ""
+    , sid = ""
+    , tagger = tagger
+    }
 
 
 {-| a basic nats subscription
@@ -290,7 +325,7 @@ applyNatsSub state sub =
                     Nothing ->
                         let
                             ( nSub, nState, cmd ) =
-                                initSubscription subject queueGroup False tagger
+                                initSubscription subject queueGroup tagger
                                     |> setupSubscription state
                         in
                             ( [ nSub.sid ], nState, [ cmd ] )
@@ -302,7 +337,7 @@ cleanSubs state sids =
         ( keep, remove ) =
             Dict.partition
                 (\sid v ->
-                    v.requestBounded || List.member sid sids
+                    List.member sid sids
                 )
                 state.subscriptions
     in
@@ -346,12 +381,11 @@ mergeNatsCmd state cmd =
             -- prepare a subject-less subscription
             -- get a random id
             let
-                ( sub, newState, cmd ) =
-                    setupSubscription state <|
-                        initSubscription "" "" True tagger
+                ( req, newState ) =
+                    setupRequest state <| initRequest tagger
             in
                 newState
-                    ! [ Random.generate (RequestInbox ( subject, data ) sub.sid) <|
+                    ! [ Random.generate (RequestInbox ( subject, data ) req.sid) <|
                             Random.String.string 12 Random.Char.latin
                       ]
 
@@ -408,6 +442,23 @@ setupSubscription state subscription =
         )
 
 
+setupRequest : State msg -> Request msg -> ( Request msg, State msg )
+setupRequest state request =
+    let
+        req : Request msg
+        req =
+            { request
+                | sid = toString state.sidCounter
+            }
+    in
+        ( req
+        , { state
+            | sidCounter = state.sidCounter + 1
+            , requests = Dict.insert req.sid req state.requests
+          }
+        )
+
+
 {-| Publish a message on a subject
 -}
 publish : String -> String -> NatsCmd.Cmd msg
@@ -417,6 +468,6 @@ publish subject data =
 
 {-| Send a request an return the response in a msg
 -}
-request : String -> String -> (Protocol.Message -> msg) -> NatsCmd.Cmd msg
+request : String -> String -> (Result Timeout Protocol.Message -> msg) -> NatsCmd.Cmd msg
 request =
     NatsCmd.Request

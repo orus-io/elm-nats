@@ -9,8 +9,9 @@
     "exposed-modules": [
         "Nats",
         "Nats.Cmd",
+        "Nats.Sub",
         "Nats.Protocol",
-        "Nats.Sub"
+        "Nats.Errors"
     ],
     "dependencies": {
         "NoRedInk/elm-decode-pipeline": "3.0.0 <= v < 4.0.0",
