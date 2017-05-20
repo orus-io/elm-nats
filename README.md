@@ -110,7 +110,9 @@ Nats module. You need to wire it into your application.
        NatsSub.none
    ```
 
-## Publishing
+## Usage
+
+### Publishing
 
 In update, use publish to generate the right Cmd:
 
@@ -123,7 +125,7 @@ In update, use publish to generate the right Cmd:
 
 ```
 
-## Subscribing
+### Subscribing
 
 1. Define a Msg tag for receiving messages
 
@@ -140,7 +142,34 @@ In update, use publish to generate the right Cmd:
        Nats.subscribe "subject1" ReceiveSubject1
    ```
 
-# Request
+#### Multiple subscriptions to the same subject
+
+natsSubscriptions are recognized by their subject only,
+which means several subscriptions on the same subject
+will collide and only one of them will be honored.
+
+To avoid this problem, Elm-Nats allow you to tag the
+subscriptions subject by adding a '#' followed by
+any string you like, so it can sort them out.
+
+Only the part before the '#' will be sent in the SUB command
+to the NATS server.
+
+In the following example, both subscriptions are on the
+"subject1" subject:
+
+```elm
+natsSubscriptions model =
+    Nats.Sub.batch
+        [ Nats.subscribe "subject1#1" ReceiveSubject1
+        , Nats.subscribe "subject1#2" ReceiveAlsoSubject1
+        ]
+```
+
+See the SubComp in example, it can define any number of
+subscriptions on the same subject.
+
+### Request
 
 1. Define a Msg tag for receiving the response
 
