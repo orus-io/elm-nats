@@ -24,17 +24,20 @@ type alias Model =
 
 init : ( Model, Cmd Msg )
 init =
-    mergeNats
-        ( { nats =
-                Nats.init NatsMsg "ws://localhost:8910/nats"
-                    |> Nats.setName "elm-nats-demo"
-          , subcomp = SubComp.init
-          , inputText = ""
-          , response = Nothing
-          }
-        , NatsCmd.none
-        , Cmd.none
-        )
+    let
+        nats =
+            Nats.init NatsMsg "ws://localhost:8910/nats"
+                |> Nats.setName "elm-nats-demo"
+    in
+        mergeNats
+            ( { nats = { nats | debug = True }
+              , subcomp = SubComp.init
+              , inputText = ""
+              , response = Nothing
+              }
+            , NatsCmd.none
+            , Cmd.none
+            )
 
 
 

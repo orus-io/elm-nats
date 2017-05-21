@@ -124,7 +124,16 @@ type alias State msg =
     , requests : Dict Sid (Request msg)
     , serverInfo : Maybe Protocol.ServerInfo
     , inboxPrefix : String
+    , debug : Bool
     }
+
+
+log : State msg -> String -> a -> a
+log state msg value =
+    if state.debug then
+        Debug.log msg value
+    else
+        value
 
 
 receive : State msg -> (Msg -> msg) -> Result String Protocol.Operation -> msg
@@ -162,7 +171,7 @@ listen state =
     Sub.batch <|
         [ WebSocket.listen
             state.url
-            (Debug.log "Receiving" >> Protocol.parseOperation >> receive state state.tagger)
+            (log state "Receiving" >> Protocol.parseOperation >> receive state state.tagger)
         ]
             ++ (List.map
                     (\req ->
@@ -185,6 +194,7 @@ init tagger url =
     , requests = Dict.empty
     , serverInfo = Nothing
     , inboxPrefix = "_INBOX."
+    , debug = False
     }
 
 
@@ -257,7 +267,7 @@ setName name state =
 
 send : State msg -> Protocol.Operation -> Cmd Msg
 send state op =
-    Protocol.toString op |> Debug.log "Sending" |> WebSocket.send state.url
+    Protocol.toString op |> log state "Sending" |> WebSocket.send state.url
 
 
 sendAll : State msg -> List Protocol.Operation -> Cmd Msg
@@ -265,7 +275,7 @@ sendAll state ops =
     (String.join "" <|
         List.map Protocol.toString ops
     )
-        |> Debug.log "Sending"
+        |> log state "Sending"
         |> WebSocket.send state.url
 
 
