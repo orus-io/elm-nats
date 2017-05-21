@@ -3,6 +3,9 @@ module Nats
         ( State
         , Msg
         , init
+        , setAuthToken
+        , setUserPass
+        , setName
         , update
         , listen
         , publish
@@ -35,6 +38,11 @@ proxy must be used. The only compatible one is
 
 @docs init, update, merge, listen
 
+
+# Settings
+
+@docs setAuthToken, setUserPass, setName
+
 -}
 
 import Debug
@@ -54,6 +62,22 @@ import Nats.Errors exposing (Timeout)
 defaultTimeout : Time
 defaultTimeout =
     30 * Time.second
+
+
+defaultConnectOptions : Protocol.ConnectOptions
+defaultConnectOptions =
+    { verbose = False
+    , pedantic = False
+
+    -- , ssl_required: Indicates whether the client requires an SSL connection.
+    , auth_token = Nothing
+    , user = Nothing
+    , pass = Nothing
+    , name = Nothing
+    , lang = "elm"
+    , version = "1.0.0"
+    , protocol = 0
+    }
 
 
 {-| Type of message the update function takes
@@ -94,6 +118,7 @@ type alias Request msg =
 type alias State msg =
     { url : String
     , tagger : Msg -> msg
+    , connectOptions : Protocol.ConnectOptions
     , sidCounter : Int
     , subscriptions : Dict Sid (Subscription msg)
     , requests : Dict Sid (Request msg)
@@ -154,12 +179,80 @@ init : (Msg -> msg) -> String -> State msg
 init tagger url =
     { url = url
     , tagger = tagger
+    , connectOptions = defaultConnectOptions
     , sidCounter = 0
     , subscriptions = Dict.empty
     , requests = Dict.empty
     , serverInfo = Nothing
     , inboxPrefix = "_INBOX."
     }
+
+
+{-| Set the auth_token connect option. Will be sent to the server each time
+'INFO' is received.
+
+    init =
+        { nats =
+            Nats.init NatsMsg "ws://yourserver.com/nats"
+                |> setAuthToken "YOUR_AUTH_TOKEN"
+        }
+
+-}
+setAuthToken : String -> State msg -> State msg
+setAuthToken auth_token state =
+    let
+        connectOptions =
+            state.connectOptions
+    in
+        { state
+            | connectOptions = { connectOptions | auth_token = Just auth_token }
+        }
+
+
+{-| Set the user and pass connect options. Will be sent to the server each time
+'INFO' is received.
+
+    init =
+        { nats =
+            Nats.init NatsMsg "ws://yourserver.com/nats"
+                |> setUserPass "username" "password"
+        }
+
+-}
+setUserPass : String -> String -> State msg -> State msg
+setUserPass user pass state =
+    let
+        connectOptions =
+            state.connectOptions
+    in
+        { state
+            | connectOptions =
+                { connectOptions
+                    | user = Just user
+                    , pass = Just pass
+                }
+        }
+
+
+{-| Set the name connect option. Will be sent to the server each time
+'INFO' is received.
+
+    init =
+        { nats =
+            Nats.init NatsMsg "ws://yourserver.com/nats"
+                |> setName "clientname"
+        }
+
+-}
+setName : String -> State msg -> State msg
+setName name state =
+    let
+        connectOptions =
+            state.connectOptions
+    in
+        { state
+            | connectOptions = { connectOptions | name = Just name }
+        }
 
 
 send : State msg -> Protocol.Operation -> Cmd Msg
@@ -172,6 +265,7 @@ sendAll state ops =
     (String.join "" <|
         List.map Protocol.toString ops
     )
+        |> Debug.log "Sending"
         |> WebSocket.send state.url
 
 
@@ -192,28 +286,27 @@ update msg state =
                     state ! [ Cmd.map state.tagger <| send state Protocol.PONG ]
 
                 Protocol.INFO serverInfo ->
-                    -- A (re)connection. Update the server info and reinitialize
-                    -- all the subscriptions
+                    -- A (re)connection. Update the server info, send CONNECT
+                    -- and reinitialize all the subscriptions
                     { state | serverInfo = Just serverInfo }
-                        ! List.append
-                            (List.map
-                                (\sub ->
-                                    Protocol.SUB sub.subject sub.queueGroup sub.sid
-                                        |> send state
-                                        |> Cmd.map state.tagger
-                                )
-                             <|
-                                Dict.values state.subscriptions
-                            )
-                            (List.map
-                                (\req ->
-                                    Protocol.SUB req.inbox "" req.sid
-                                        |> send state
-                                        |> Cmd.map state.tagger
-                                )
-                             <|
-                                Dict.values state.requests
-                            )
+                        ! [ Cmd.map state.tagger <|
+                                sendAll state <|
+                                    List.concat
+                                        [ [ Protocol.CONNECT state.connectOptions ]
+                                        , List.map
+                                            (\sub ->
+                                                Protocol.SUB sub.subject sub.queueGroup sub.sid
+                                            )
+                                          <|
+                                            Dict.values state.subscriptions
+                                        , List.map
+                                            (\req ->
+                                                Protocol.SUB req.inbox "" req.sid
+                                            )
+                                          <|
+                                            Dict.values state.requests
+                                        ]
+                          ]
 
                 _ ->
                     state ! []

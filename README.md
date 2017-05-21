@@ -52,10 +52,21 @@ Nats module. You need to wire it into your application.
 
     ```elm
     init =
-        { nats: Nats.init NatsMsg "WEBSOCKET_URL"
+        { nats = Nats.init NatsMsg "WEBSOCKET_URL"
         }
     ```
 
+    If you have credentials or a client name to send as CONNECT options,
+    use setAuthToken, setUserPass and/or setName:
+
+    ```elm
+    init =
+        { nats =
+            Nats.init NatsMsg "WEBSOCKET_URL"
+                |> Nats.setAuthToken "A token"
+                |> Nats.setName "My client name"
+        }
+    ```
 
 1. Define a "mergeNats" function that can post-process your model and nats
    subscriptions and commands to give you a final state and commands:

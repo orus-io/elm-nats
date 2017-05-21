@@ -17,6 +17,7 @@ module Nats.Protocol
 import Regex exposing (Regex)
 import Json.Decode as JsonD
 import Json.Decode.Pipeline as JsonDP
+import Json.Encode as JsonE
 
 
 {-| A NATS message
@@ -48,10 +49,10 @@ type alias ConnectOptions =
     , pedantic : Bool -- Turns on additional strict format checking, e.g. for properly formed subjects
 
     -- , ssl_required: Indicates whether the client requires an SSL connection.
-    , auth_token : String -- Client authorization token
-    , user : String -- Connection username (if auth_required is set)
-    , pass : String -- Connection password (if auth_required is set)
-    , name : String -- Optional client name
+    , auth_token : Maybe String -- Client authorization token
+    , user : Maybe String -- Connection username (if auth_required is set)
+    , pass : Maybe String -- Connection password (if auth_required is set)
+    , name : Maybe String -- Optional client name
     , lang : String -- The implementation language of the client.
     , version : String -- The version of the client.
     , protocol : Int -- optional int. Sending 0 (or absent) indicates client supports original protocol. Sending 1 indicates that the client supports dynamic reconfiguration of cluster topology changes by asynchronously receiving INFO messages with known servers it can reconnect to.
@@ -200,8 +201,44 @@ toString op =
         INFO _ ->
             ""
 
-        CONNECT _ ->
-            ""
+        CONNECT options ->
+            String.append "CONNECT " <|
+                JsonE.encode 0 <|
+                    JsonE.object <|
+                        [ ( "verbose", JsonE.bool options.verbose )
+                        , ( "pedantic", JsonE.bool options.pedantic )
+                        , ( "lang", JsonE.string options.lang )
+                        , ( "version", JsonE.string options.version )
+                        , ( "protocol", JsonE.int options.protocol )
+                        ]
+                            ++ (case options.auth_token of
+                                    Just auth_token ->
+                                        [ ( "auth_token", JsonE.string auth_token ) ]
+
+                                    Nothing ->
+                                        []
+                               )
+                            ++ (case options.user of
+                                    Just user ->
+                                        [ ( "user", JsonE.string user ) ]
+
+                                    Nothing ->
+                                        []
+                               )
+                            ++ (case options.pass of
+                                    Just pass ->
+                                        [ ( "pass", JsonE.string pass ) ]
+
+                                    Nothing ->
+                                        []
+                               )
+                            ++ (case options.name of
+                                    Just name ->
+                                        [ ( "name", JsonE.string name ) ]
+
+                                    Nothing ->
+                                        []
+                               )
 
         MSG sid message ->
             ""
