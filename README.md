@@ -6,7 +6,7 @@ a websocket.
 It works by adding new Nats.Cmd and Nats.Sub to TEA, and merging them into
 classic Cmd and Sub in update and subscriptions.
 
-It clearly an alpha version, which means the API is likely to change.
+It clearly is an alpha version, which means the API is likely to change.
 
 ## Prerequisites
 
@@ -68,6 +68,18 @@ Nats module. You need to wire it into your application.
         }
     ```
 
+
+1. Define the top-level subscription and nats subscriptions:
+
+   ```elm
+   subscriptions model =
+       Nats.listen model.state
+
+   natsSubscriptions model =
+       NatsSub.none
+   ```
+
+
 1. Define a "mergeNats" function that can post-process your model and nats
    subscriptions and commands to give you a final state and commands:
 
@@ -111,16 +123,6 @@ Nats module. You need to wire it into your application.
                    
    ```
 
-1. Define the top-level subscription and nats subscriptions:
-
-   ```elm
-   subscriptions model =
-       Nats.listen model.state
-
-   natsSubscriptions model =
-       NatsSub.none
-   ```
-
 ## Usage
 
 ### Publishing
@@ -130,7 +132,7 @@ In update, use publish to generate the right Cmd:
 ```elm
 
     ( model
-    , Nats.publish model.nats "subject1" "Hello world!"
+    , Nats.publish "subject1" "Hello world!"
     , Cmd.none
     )
 
@@ -187,7 +189,7 @@ subscriptions on the same subject.
    ```elm
 
    type Msg
-       = ReceiveResponse Nats.Protocol.Message
+       = ReceiveResponse (Result Nats.Errors.Timeout Nats.Protocol.Message)
    ```
 
 1. Send a request from your update function
