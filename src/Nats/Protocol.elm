@@ -97,7 +97,7 @@ type
 
 messageRe : Regex
 messageRe =
-    Regex.regex "^MSG ([a-zA-Z0-9._]+) ([a-zA-Z0-9]+)( [a-zA-Z0-9._]+)? [0-9]+\\r\\n(.*)$"
+    Regex.regex "^MSG ([a-zA-Z0-9._-]+) ([a-zA-Z0-9]+)( [a-zA-Z0-9._]+)? [0-9]+\\r\\n(.*)$"
 
 
 matchMessage : String -> Result String (List (Maybe String))
