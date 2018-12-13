@@ -9,6 +9,7 @@ module Nats
         , update
         , listen
         , publish
+        , publishRequest
         , subscribe
         , queuesubscribe
         , request
@@ -31,7 +32,7 @@ proxy must be used. The only compatible one is
 
 # Operations
 
-@docs subscribe, queuesubscribe, publish, request, requestWithTimeout
+@docs subscribe, queuesubscribe, publish, publishRequest, request, requestWithTimeout
 
 
 # TEA entry points
@@ -503,12 +504,12 @@ mergeNatsSub state sub =
 mergeNatsCmd : State msg -> NatsCmd.Cmd msg -> ( State msg, Cmd Msg )
 mergeNatsCmd state cmd =
     case cmd of
-        NatsCmd.Publish subject data ->
+        NatsCmd.Publish subject replyTo data ->
             state
                 ! [ send state <|
                         Protocol.PUB
                             { subject = subject
-                            , replyTo = ""
+                            , replyTo = replyTo
                             , data = data
                             }
                   ]
@@ -599,7 +600,14 @@ setupRequest state request =
 -}
 publish : String -> String -> NatsCmd.Cmd msg
 publish subject data =
-    NatsCmd.Publish subject data
+    NatsCmd.Publish subject "" data
+
+
+{-| Publish a message with a reply subject
+-}
+publishRequest : String -> String -> String -> NatsCmd.Cmd msg
+publishRequest =
+    NatsCmd.Publish
 
 
 {-| Send a request

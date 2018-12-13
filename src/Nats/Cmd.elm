@@ -22,7 +22,7 @@ import Time exposing (Time)
 {-| A Nats command
 -}
 type Cmd msg
-    = Publish String String
+    = Publish String String String
     | Request Time String String (Result Timeout Protocol.Message -> msg)
     | Batch (List (Cmd msg))
     | None
@@ -33,8 +33,8 @@ type Cmd msg
 map : (a -> msg) -> Cmd a -> Cmd msg
 map aToMsg cmd =
     case cmd of
-        Publish subject data ->
-            Publish subject data
+        Publish subject replyTo data ->
+            Publish subject replyTo data
 
         Request timeout subject data tagger ->
             Request timeout subject data (tagger >> aToMsg)
