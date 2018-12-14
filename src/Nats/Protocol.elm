@@ -298,5 +298,5 @@ decodeServerInfo =
         |> JsonDP.required "go" JsonD.string
         |> JsonDP.required "host" JsonD.string
         |> JsonDP.required "port" JsonD.int
-        |> JsonDP.required "auth_required" JsonD.bool
+        |> JsonDP.optional "auth_required" JsonD.bool True
         |> JsonDP.required "max_payload" JsonD.int
