@@ -12,6 +12,7 @@ module Nats
         , publishRequest
         , subscribe
         , queuesubscribe
+        , onConnect
         , request
         , requestWithTimeout
         , merge
@@ -32,7 +33,7 @@ proxy must be used. The only compatible one is
 
 # Operations
 
-@docs subscribe, queuesubscribe, publish, publishRequest, request, requestWithTimeout
+@docs subscribe, queuesubscribe, publish, publishRequest, request, requestWithTimeout, onConnect
 
 
 # TEA entry points
@@ -119,6 +120,7 @@ type alias Request msg =
 type alias State msg =
     { url : String
     , tagger : Msg -> msg
+    , onConnect : List (Protocol.ServerInfo -> msg)
     , connectOptions : Protocol.ConnectOptions
     , sidCounter : Int
     , subscriptions : Dict Sid (Subscription msg)
@@ -189,6 +191,7 @@ init : (Msg -> msg) -> String -> State msg
 init tagger url =
     { url = url
     , tagger = tagger
+    , onConnect = []
     , connectOptions = defaultConnectOptions
     , sidCounter = 0
     , subscriptions = Dict.empty
@@ -300,7 +303,7 @@ update msg state =
                     -- A (re)connection. Update the server info, send CONNECT
                     -- and reinitialize all the subscriptions
                     { state | serverInfo = Just serverInfo }
-                        ! [ Cmd.map state.tagger <|
+                        ! ((Cmd.map state.tagger <|
                                 sendAll state <|
                                     List.concat
                                         [ [ Protocol.CONNECT state.connectOptions ]
@@ -317,7 +320,12 @@ update msg state =
                                           <|
                                             Dict.values state.requests
                                         ]
-                          ]
+                           )
+                            :: (List.map
+                                    (\x -> sendMsg (x serverInfo))
+                                    state.onConnect
+                               )
+                          )
 
                 _ ->
                     state ! []
@@ -409,6 +417,13 @@ initRequest timeout tagger =
     }
 
 
+{-| subscribe to new connections
+-}
+onConnect : (Protocol.ServerInfo -> msg) -> NatsSub.Sub msg
+onConnect tagger =
+    NatsSub.OnConnect tagger
+
+
 {-| a basic nats subscription
 -}
 subscribe : String -> (Protocol.Message -> msg) -> NatsSub.Sub msg
@@ -430,6 +445,12 @@ applyNatsSub state sub =
     case sub of
         NatsSub.None ->
             ( [], state, [] )
+
+        NatsSub.OnConnect sub ->
+            ( []
+            , { state | onConnect = sub :: state.onConnect }
+            , []
+            )
 
         NatsSub.BatchSub list ->
             List.foldl
@@ -491,7 +512,7 @@ mergeNatsSub state sub =
     -- for each establish sub without an incoming sub, delete it and send a UNSUB
     let
         ( sids, nState, subCmds ) =
-            applyNatsSub state sub
+            applyNatsSub { state | onConnect = [] } sub
 
         ( finalState, unsubCmds ) =
             cleanSubs nState sids

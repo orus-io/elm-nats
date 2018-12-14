@@ -48,6 +48,7 @@ type Msg
     = NoOp
     | NatsMsg Nats.Msg
     | SubCompMsg SubComp.Msg
+    | NatsConnect Nats.Protocol.ServerInfo
     | Publish
     | InputText String
     | SendRequest
@@ -105,6 +106,12 @@ update msg model =
                     , (NatsCmd.map SubCompMsg subcompNatsCmd)
                     , (Cmd.map SubCompMsg subcompCmd)
                     )
+
+            NatsConnect info ->
+                ( model
+                , Nats.publish "test.subject" (toString info)
+                , Cmd.none
+                )
 
             Publish ->
                 ( model
@@ -286,6 +293,7 @@ natsSubscriptions model =
     NatsSub.batch
         [ Nats.subscribe "say.hello.to.me" HandleRequest
         , NatsSub.map SubCompMsg <| SubComp.natsSubscriptions model.subcomp
+        , Nats.onConnect NatsConnect
         ]
 
 

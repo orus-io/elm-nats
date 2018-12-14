@@ -22,6 +22,7 @@ back messages to me".
 -}
 type Sub msg
     = Subscribe String String (Protocol.Message -> msg)
+    | OnConnect (Protocol.ServerInfo -> msg)
     | BatchSub (List (Sub msg))
     | None
 
@@ -59,6 +60,9 @@ map aToMsg sub =
     case sub of
         Subscribe subject queueGroup tagger ->
             Subscribe subject queueGroup <| tagger >> aToMsg
+
+        OnConnect tagger ->
+            OnConnect <| tagger >> aToMsg
 
         BatchSub list ->
             BatchSub <| List.map (map aToMsg) list
