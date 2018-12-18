@@ -12,6 +12,7 @@ module Nats
         , publishRequest
         , subscribe
         , queuesubscribe
+        , requestSubscribe
         , onConnect
         , request
         , requestWithTimeout
@@ -33,7 +34,7 @@ proxy must be used. The only compatible one is
 
 # Operations
 
-@docs subscribe, queuesubscribe, publish, publishRequest, request, requestWithTimeout, onConnect
+@docs subscribe, queuesubscribe, requestSubscribe, publish, publishRequest, request, requestWithTimeout, onConnect
 
 
 # TEA entry points
@@ -88,6 +89,7 @@ type Msg
     = Receive Protocol.Operation
     | ReceptionError String
     | RequestInbox ( String, String ) String String
+    | RequestSubscribeInbox String String
     | RequestResponse Sid Protocol.Message
     | RequestTimeout Sid Time
 
@@ -115,6 +117,17 @@ type alias Request msg =
     }
 
 
+type alias RequestSubscription msg =
+    { subject : String
+    , tag : String
+    , request : String
+    , inbox : String
+    , timeout : Time
+    , sid : Sid
+    , tagger : Result Timeout Protocol.Message -> msg
+    }
+
+
 {-| The NATS state to add to the application model (once)
 -}
 type alias State msg =
@@ -125,6 +138,7 @@ type alias State msg =
     , sidCounter : Int
     , subscriptions : Dict Sid (Subscription msg)
     , requests : Dict Sid (Request msg)
+    , requestSubscriptions : Dict Sid (RequestSubscription msg)
     , serverInfo : Maybe Protocol.ServerInfo
     , inboxPrefix : String
     , debug : Bool
@@ -148,17 +162,24 @@ receive state tagger operation =
         Ok operation ->
             case operation of
                 Protocol.MSG sid natsMsg ->
-                    case Dict.get sid state.subscriptions of
-                        Just sub ->
+                    case
+                        ( Dict.get sid state.subscriptions
+                        , Dict.get sid state.requestSubscriptions
+                        , Dict.get sid state.requests
+                        )
+                    of
+                        ( Just sub, _, _ ) ->
                             sub.tagger natsMsg
 
-                        Nothing ->
-                            case Dict.get sid state.requests of
-                                Just req ->
-                                    tagger <| RequestResponse sid natsMsg
+                        ( _, Just rsub, _ ) ->
+                            -- TODO detect EOS and UNSUB the corresponding sub
+                            rsub.tagger (Ok natsMsg)
 
-                                Nothing ->
-                                    tagger <| Receive operation
+                        ( _, _, Just req ) ->
+                            tagger <| RequestResponse sid natsMsg
+
+                        _ ->
+                            tagger <| Receive operation
 
                 _ ->
                     tagger <| Receive operation
@@ -196,6 +217,7 @@ init tagger url =
     , sidCounter = 0
     , subscriptions = Dict.empty
     , requests = Dict.empty
+    , requestSubscriptions = Dict.empty
     , serverInfo = Nothing
     , inboxPrefix = "_INBOX."
     , debug = False
@@ -360,6 +382,32 @@ update msg state =
                     -- TODO report an error somehow ? crash the app ?
                     state ! []
 
+        RequestSubscribeInbox sid inboxSuffix ->
+            case Dict.get sid state.requestSubscriptions of
+                Just rsub ->
+                    let
+                        newRSub =
+                            { rsub
+                                | inbox = state.inboxPrefix ++ inboxSuffix
+                            }
+                    in
+                        { state
+                            | requestSubscriptions = Dict.insert sid newRSub state.requestSubscriptions
+                        }
+                            ! [ Cmd.map state.tagger <|
+                                    sendAll state
+                                        [ Protocol.SUB newRSub.inbox "" newRSub.sid
+                                        , Protocol.PUB
+                                            { subject = newRSub.subject
+                                            , replyTo = newRSub.inbox
+                                            , data = newRSub.request
+                                            }
+                                        ]
+                              ]
+
+                Nothing ->
+                    state ! []
+
         RequestResponse sid natsMsg ->
             case Dict.get sid state.requests of
                 Just req ->
@@ -417,6 +465,26 @@ initRequest timeout tagger =
     }
 
 
+initRequestSubscription :
+    String
+    -> String
+    -> (Result Timeout Protocol.Message -> msg)
+    -> RequestSubscription msg
+initRequestSubscription subject request tagger =
+    let
+        ( cleanSubject, tag ) =
+            splitSubject subject
+    in
+        { subject = cleanSubject
+        , tag = tag
+        , inbox = ""
+        , timeout = defaultTimeout
+        , request = request
+        , sid = ""
+        , tagger = tagger
+        }
+
+
 {-| subscribe to new connections
 -}
 onConnect : (Protocol.ServerInfo -> msg) -> NatsSub.Sub msg
@@ -438,30 +506,43 @@ queuesubscribe subject queueGroup tagger =
     NatsSub.Subscribe subject queueGroup tagger
 
 
-applyNatsSub : State msg -> NatsSub.Sub msg -> ( List String, State msg, List (Cmd Msg) )
+{-| A streamed reply subscription
+Implements the "streamed reply" pattern from nrpc
+-}
+requestSubscribe :
+    String
+    -> String
+    -> (Result Timeout Protocol.Message -> msg)
+    -> NatsSub.Sub msg
+requestSubscribe subject request tagger =
+    NatsSub.RequestSubscribe subject request tagger
+
+
+applyNatsSub : State msg -> NatsSub.Sub msg -> ( List String, List String, State msg, List (Cmd Msg) )
 applyNatsSub state sub =
     -- for each sub, check if it already exists. If not, add it and send a SUB
     -- return updated state and a list of sid
     case sub of
         NatsSub.None ->
-            ( [], state, [] )
+            ( [], [], state, [] )
 
         NatsSub.OnConnect sub ->
             ( []
+            , []
             , { state | onConnect = sub :: state.onConnect }
             , []
             )
 
         NatsSub.BatchSub list ->
             List.foldl
-                (\sub ( sids, state, cmds ) ->
+                (\sub ( sids, rsids, state, cmds ) ->
                     let
-                        ( nSids, nState, nCmds ) =
+                        ( nSids, nRsids, nState, nCmds ) =
                             applyNatsSub state sub
                     in
-                        ( sids ++ nSids, nState, cmds ++ nCmds )
+                        ( sids ++ nSids, rsids ++ nRsids, nState, cmds ++ nCmds )
                 )
-                ( [], state, [] )
+                ( [], [], state, [] )
                 list
 
         NatsSub.Subscribe subject queueGroup tagger ->
@@ -478,7 +559,7 @@ applyNatsSub state sub =
                             (Dict.values state.subscriptions)
                 of
                     Just sub ->
-                        ( [ sub.sid ], state, [] )
+                        ( [ sub.sid ], [], state, [] )
 
                     Nothing ->
                         let
@@ -486,11 +567,35 @@ applyNatsSub state sub =
                                 initSubscription subject queueGroup tagger
                                     |> setupSubscription state
                         in
-                            ( [ nSub.sid ], nState, [ cmd ] )
+                            ( [ nSub.sid ], [], nState, [ cmd ] )
+
+        NatsSub.RequestSubscribe subject request tagger ->
+            let
+                ( cleanSubject, tag ) =
+                    splitSubject subject
+            in
+                case
+                    List.head <|
+                        List.filter
+                            (\sub ->
+                                sub.subject == cleanSubject && sub.tag == tag
+                            )
+                            (Dict.values state.requestSubscriptions)
+                of
+                    Just rsub ->
+                        ( [], [ rsub.sid ], state, [] )
+
+                    Nothing ->
+                        let
+                            ( nRep, nState, cmd ) =
+                                initRequestSubscription subject request tagger
+                                    |> setupRequestSubscription state
+                        in
+                            ( [], [ nRep.sid ], nState, [ cmd ] )
 
 
-cleanSubs : State msg -> List String -> ( State msg, List (Cmd Msg) )
-cleanSubs state sids =
+cleanSubs : State msg -> List String -> List String -> ( State msg, List (Cmd Msg) )
+cleanSubs state sids rsids =
     let
         ( keep, remove ) =
             Dict.partition
@@ -498,11 +603,22 @@ cleanSubs state sids =
                     List.member sid sids
                 )
                 state.subscriptions
+
+        ( rkeep, rremove ) =
+            Dict.partition
+                (\rsid v ->
+                    List.member rsid rsids
+                )
+                state.requestSubscriptions
     in
         ( { state
             | subscriptions = keep
+            , requestSubscriptions = rkeep
           }
-        , List.map ((flip Protocol.UNSUB) 0 >> send state) <| Dict.keys remove
+        , List.concat
+            [ List.map ((flip Protocol.UNSUB) 0 >> send state) <| Dict.keys remove
+            , List.map ((flip Protocol.UNSUB) 0 >> send state) <| Dict.keys rremove
+            ]
         )
 
 
@@ -511,11 +627,11 @@ mergeNatsSub state sub =
     -- apply the sub
     -- for each establish sub without an incoming sub, delete it and send a UNSUB
     let
-        ( sids, nState, subCmds ) =
+        ( sids, rsids, nState, subCmds ) =
             applyNatsSub { state | onConnect = [] } sub
 
         ( finalState, unsubCmds ) =
-            cleanSubs nState sids
+            cleanSubs nState sids rsids
     in
         ( finalState, Cmd.batch (subCmds ++ unsubCmds) )
 
@@ -614,6 +730,25 @@ setupRequest state request =
             | sidCounter = state.sidCounter + 1
             , requests = Dict.insert req.sid req state.requests
           }
+        )
+
+
+setupRequestSubscription : State msg -> RequestSubscription msg -> ( RequestSubscription msg, State msg, Cmd Msg )
+setupRequestSubscription state requestSubscription =
+    let
+        rsub : RequestSubscription msg
+        rsub =
+            { requestSubscription
+                | sid = toString state.sidCounter
+            }
+    in
+        ( rsub
+        , { state
+            | sidCounter = state.sidCounter + 1
+            , requestSubscriptions = Dict.insert rsub.sid rsub state.requestSubscriptions
+          }
+        , Random.generate (RequestSubscribeInbox rsub.sid) <|
+            Random.String.string 12 Random.Char.latin
         )
 
 

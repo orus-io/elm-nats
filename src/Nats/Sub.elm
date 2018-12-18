@@ -14,6 +14,7 @@ This module mimics Platform.Sub, but for Nats subscriptions
 
 -}
 
+import Nats.Errors exposing (Timeout)
 import Nats.Protocol as Protocol
 
 
@@ -22,6 +23,7 @@ back messages to me".
 -}
 type Sub msg
     = Subscribe String String (Protocol.Message -> msg)
+    | RequestSubscribe String String (Result Timeout Protocol.Message -> msg)
     | OnConnect (Protocol.ServerInfo -> msg)
     | BatchSub (List (Sub msg))
     | None
@@ -60,6 +62,9 @@ map aToMsg sub =
     case sub of
         Subscribe subject queueGroup tagger ->
             Subscribe subject queueGroup <| tagger >> aToMsg
+
+        RequestSubscribe subject request tagger ->
+            RequestSubscribe subject request <| tagger >> aToMsg
 
         OnConnect tagger ->
             OnConnect <| tagger >> aToMsg
