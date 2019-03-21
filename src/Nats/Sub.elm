@@ -1,10 +1,4 @@
-module Nats.Sub
-    exposing
-        ( Sub(..)
-        , batch
-        , map
-        , none
-        )
+module Nats.Sub exposing (Sub(..), map, batch, none)
 
 {-| Nats Subscription types
 
@@ -51,6 +45,7 @@ batch list =
         list ->
             if 1 == List.length list then
                 Maybe.withDefault none <| List.head list
+
             else
                 BatchSub list
 

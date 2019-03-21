@@ -1,23 +1,15 @@
-module Nats.Protocol
-    exposing
-        ( Operation(..)
-        , Message
-        , ServerInfo
-        , ConnectOptions
-        , parseOperation
-        , toString
-        )
+module Nats.Protocol exposing (Operation(..), Message, ServerInfo, ConnectOptions, parseOperation, toString)
 
 {-| Provides types and utilities for the NATS protocol
 
-@docs Operation , Message, ServerInfo, ConnectOptions, parseOperation, toString
+@docs Operation, Message, ServerInfo, ConnectOptions, parseOperation, toString
 
 -}
 
-import Regex exposing (Regex)
 import Json.Decode as JsonD
 import Json.Decode.Pipeline as JsonDP
 import Json.Encode as JsonE
+import Regex exposing (Regex)
 
 
 {-| A NATS message
@@ -106,12 +98,12 @@ matchMessage str =
         matches =
             Regex.find (Regex.AtMost 1) messageRe str
     in
-        case List.head matches of
-            Just match ->
-                Result.Ok match.submatches
+    case List.head matches of
+        Just match ->
+            Result.Ok match.submatches
 
-            Nothing ->
-                Result.Err <| "Invalid MSG syntax: " ++ str
+        Nothing ->
+            Result.Err <| "Invalid MSG syntax: " ++ str
 
 
 parseMessage : String -> Result String ( String, Message )
@@ -139,13 +131,13 @@ parseMessage str =
                 payload =
                     Maybe.withDefault "" (List.drop 3 args |> List.head)
             in
-                Ok
-                    ( sid
-                    , { subject = subject
-                      , replyTo = replyTo
-                      , data = payload
-                      }
-                    )
+            Ok
+                ( sid
+                , { subject = subject
+                  , replyTo = replyTo
+                  , data = payload
+                  }
+                )
 
         Err err ->
             Err err
@@ -157,40 +149,44 @@ parseOperation : String -> Result String Operation
 parseOperation str =
     let
         stripped =
-            if String.endsWith "\x0D\n" str then
+            if String.endsWith "\u{000D}\n" str then
                 String.dropRight 2 str
+
             else
                 str
     in
-        case stripped of
-            "PING" ->
-                Ok PING
+    case stripped of
+        "PING" ->
+            Ok PING
 
-            "PONG" ->
-                Ok PONG
+        "PONG" ->
+            Ok PONG
 
-            "+OK" ->
-                Ok OK
+        "+OK" ->
+            Ok OK
 
-            _ ->
-                if String.startsWith "INFO " stripped then
-                    case JsonD.decodeString decodeServerInfo <| String.dropLeft 5 stripped of
-                        Ok info ->
-                            Ok <| INFO info
+        _ ->
+            if String.startsWith "INFO " stripped then
+                case JsonD.decodeString decodeServerInfo <| String.dropLeft 5 stripped of
+                    Ok info ->
+                        Ok <| INFO info
 
-                        Err err ->
-                            Err err
-                else if String.startsWith "-ERR " stripped then
-                    Ok <| ERR <| String.dropRight 1 <| String.dropLeft 5 stripped
-                else if String.startsWith "MSG" stripped then
-                    case parseMessage stripped of
-                        Result.Ok ( sid, message ) ->
-                            Ok <| MSG sid message
+                    Err err ->
+                        Err err
 
-                        Result.Err err ->
-                            Err err
-                else
-                    Err <| "Invalid command '" ++ stripped ++ "'"
+            else if String.startsWith "-ERR " stripped then
+                Ok <| ERR <| String.dropRight 1 <| String.dropLeft 5 stripped
+
+            else if String.startsWith "MSG" stripped then
+                case parseMessage stripped of
+                    Result.Ok ( sid, message ) ->
+                        Ok <| MSG sid message
+
+                    Result.Err err ->
+                        Err err
+
+            else
+                Err <| "Invalid command '" ++ stripped ++ "'"
 
 
 {-| serialize an Operation (generally for sending to the server)
@@ -254,12 +250,13 @@ toString op =
                 ++ message.subject
                 ++ (if not (String.isEmpty message.replyTo) then
                         " " ++ message.replyTo
+
                     else
                         ""
                    )
                 ++ " "
                 ++ Basics.toString (String.length message.data)
-                ++ "\x0D\n"
+                ++ "\u{000D}\n"
                 ++ message.data
 
         SUB subject queueGroup sid ->
@@ -268,6 +265,7 @@ toString op =
                 ++ " "
                 ++ (if not (String.isEmpty queueGroup) then
                         queueGroup ++ " "
+
                     else
                         ""
                    )
@@ -276,10 +274,12 @@ toString op =
         UNSUB sid maxMsgs ->
             "UNSUB "
                 ++ sid
-                ++ if maxMsgs /= 0 then
-                    " " ++ Basics.toString maxMsgs
-                   else
-                    ""
+                ++ (if maxMsgs /= 0 then
+                        " " ++ Basics.toString maxMsgs
+
+                    else
+                        ""
+                   )
 
         OK ->
             "OK"
@@ -287,7 +287,7 @@ toString op =
         ERR err ->
             "ERR '" ++ err ++ "'"
     )
-        ++ "\x0D\n"
+        ++ "\u{000D}\n"
 
 
 decodeServerInfo : JsonD.Decoder ServerInfo

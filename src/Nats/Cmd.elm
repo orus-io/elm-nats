@@ -1,10 +1,4 @@
-module Nats.Cmd
-    exposing
-        ( Cmd(..)
-        , map
-        , batch
-        , none
-        )
+module Nats.Cmd exposing (Cmd(..), map, batch, none)
 
 {-| Nats command types
 
@@ -14,8 +8,8 @@ This module mimics Platform.Cmd, but for Nats commands
 
 -}
 
-import Nats.Protocol as Protocol
 import Nats.Errors exposing (Timeout)
+import Nats.Protocol as Protocol
 import Time exposing (Time)
 
 
