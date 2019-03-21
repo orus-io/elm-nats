@@ -712,7 +712,7 @@ setupSubscription state subscription =
         sub : Subscription msg
         sub =
             { subscription
-                | sid = toString state.sidCounter
+                | sid = String.fromInt state.sidCounter
             }
     in
     ( sub
@@ -730,7 +730,7 @@ setupRequest state request =
         req : Request msg
         req =
             { request
-                | sid = toString state.sidCounter
+                | sid = String.fromInt state.sidCounter
             }
     in
     ( req
@@ -747,7 +747,7 @@ setupRequestSubscription state requestSubscription =
         rsub : RequestSubscription msg
         rsub =
             { requestSubscription
-                | sid = toString state.sidCounter
+                | sid = String.fromInt state.sidCounter
             }
     in
     ( rsub

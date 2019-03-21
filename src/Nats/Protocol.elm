@@ -255,7 +255,7 @@ toString op =
                         ""
                    )
                 ++ " "
-                ++ Basics.toString (String.length message.data)
+                ++ String.fromInt (String.length message.data)
                 ++ "\u{000D}\n"
                 ++ message.data
 
@@ -275,7 +275,7 @@ toString op =
             "UNSUB "
                 ++ sid
                 ++ (if maxMsgs /= 0 then
-                        " " ++ Basics.toString maxMsgs
+                        " " ++ Strings.fromInt maxMsgs
 
                     else
                         ""
