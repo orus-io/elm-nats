@@ -10,14 +10,14 @@ This module mimics Platform.Cmd, but for Nats commands
 
 import Nats.Errors exposing (Timeout)
 import Nats.Protocol as Protocol
-import Time exposing (Time)
+import Time exposing (Posix)
 
 
 {-| A Nats command
 -}
 type Cmd msg
     = Publish String String String
-    | Request Time String String (Result Timeout Protocol.Message -> msg)
+    | Request Posix String String (Result Timeout Protocol.Message -> msg)
     | Batch (List (Cmd msg))
     | None
 

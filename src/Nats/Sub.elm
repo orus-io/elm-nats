@@ -42,12 +42,12 @@ batch list =
         [] ->
             None
 
-        list ->
-            if 1 == List.length list then
-                Maybe.withDefault none <| List.head list
+        l ->
+            if 1 == List.length l then
+                Maybe.withDefault none <| List.head l
 
             else
-                BatchSub list
+                BatchSub l
 
 
 {-| Map a Sub a to a Sub msg

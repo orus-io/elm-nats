@@ -87,16 +87,21 @@ type
     | ERR String
 
 
-messageRe : Regex
+messageRe : Maybe Regex
 messageRe =
-    Regex.regex "^MSG ([a-zA-Z0-9._-]+) ([a-zA-Z0-9]+)( [a-zA-Z0-9._]+)? [0-9]+\\r\\n(.*)$"
+    Regex.fromString "^MSG ([a-zA-Z0-9._-]+) ([a-zA-Z0-9]+)( [a-zA-Z0-9._]+)? [0-9]+\\r\\n(.*)$"
 
 
 matchMessage : String -> Result String (List (Maybe String))
 matchMessage str =
     let
         matches =
-            Regex.find (Regex.AtMost 1) messageRe str
+            case messageRe of
+                Nothing ->
+                    []
+
+                Just re ->
+                    Regex.findAtMost 1 re str
     in
     case List.head matches of
         Just match ->
@@ -172,7 +177,7 @@ parseOperation str =
                         Ok <| INFO info
 
                     Err err ->
-                        Err err
+                        Err <| JsonD.errorToString err
 
             else if String.startsWith "-ERR " stripped then
                 Ok <| ERR <| String.dropRight 1 <| String.dropLeft 5 stripped
@@ -275,7 +280,7 @@ toString op =
             "UNSUB "
                 ++ sid
                 ++ (if maxMsgs /= 0 then
-                        " " ++ Strings.fromInt maxMsgs
+                        " " ++ String.fromInt maxMsgs
 
                     else
                         ""
@@ -292,7 +297,7 @@ toString op =
 
 decodeServerInfo : JsonD.Decoder ServerInfo
 decodeServerInfo =
-    JsonDP.decode ServerInfo
+    JsonD.succeed ServerInfo
         |> JsonDP.required "server_id" JsonD.string
         |> JsonDP.required "version" JsonD.string
         |> JsonDP.required "go" JsonD.string

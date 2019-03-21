@@ -40,17 +40,17 @@ import Nats.Cmd as NatsCmd
 import Nats.Errors exposing (Timeout)
 import Nats.Protocol as Protocol
 import Nats.Sub as NatsSub
+import PortFunnel.WebSocket as WebSocket
 import Random
 import Random.Char
 import Random.String
 import Task
-import Time exposing (Time)
-import WebSocket
+import Time exposing (Posix)
 
 
-defaultTimeout : Time
+defaultTimeout : Int
 defaultTimeout =
-    30 * Time.second
+    30
 
 
 defaultConnectOptions : Protocol.ConnectOptions
@@ -77,7 +77,7 @@ type Msg
     | RequestInbox ( String, String ) String String
     | RequestSubscribeInbox String String
     | RequestResponse Sid Protocol.Message
-    | RequestTimeout Sid Time
+    | RequestTimeout Sid Posix
 
 
 type alias Sid =
@@ -97,7 +97,7 @@ type alias Subscription msg =
 
 type alias Request msg =
     { inbox : String
-    , timeout : Time
+    , timeout : Float
     , sid : Sid
     , tagger : Result Timeout Protocol.Message -> msg
     }
@@ -108,7 +108,7 @@ type alias RequestSubscription msg =
     , tag : String
     , request : String
     , inbox : String
-    , timeout : Time
+    , timeout : Float
     , sid : Sid
     , tagger : Result Timeout Protocol.Message -> msg
     }
@@ -146,30 +146,28 @@ receive state tagger operation =
         Err err ->
             tagger <| ReceptionError err
 
-        Ok operation ->
-            case operation of
-                Protocol.MSG sid natsMsg ->
-                    case
-                        ( Dict.get sid state.subscriptions
-                        , Dict.get sid state.requestSubscriptions
-                        , Dict.get sid state.requests
-                        )
-                    of
-                        ( Just sub, _, _ ) ->
-                            sub.tagger natsMsg
+        Ok (Protocol.MSG sid natsMsg) ->
+            case
+                ( Dict.get sid state.subscriptions
+                , Dict.get sid state.requestSubscriptions
+                , Dict.get sid state.requests
+                )
+            of
+                ( Just sub, _, _ ) ->
+                    sub.tagger natsMsg
 
-                        ( _, Just rsub, _ ) ->
-                            -- TODO detect EOS and UNSUB the corresponding sub
-                            rsub.tagger (Ok natsMsg)
+                ( _, Just rsub, _ ) ->
+                    -- TODO detect EOS and UNSUB the corresponding sub
+                    rsub.tagger (Ok natsMsg)
 
-                        ( _, _, Just req ) ->
-                            tagger <| RequestResponse sid natsMsg
-
-                        _ ->
-                            tagger <| Receive operation
+                ( _, _, Just req ) ->
+                    tagger <| RequestResponse sid natsMsg
 
                 _ ->
                     tagger <| Receive operation
+
+        Ok op ->
+            tagger <| Receive op
 
 
 {-| Creates a Sub for the whole applications
@@ -460,7 +458,7 @@ initSubscription subject queueGroup tagger =
     }
 
 
-initRequest : Time -> (Result Timeout Protocol.Message -> msg) -> Request msg
+initRequest : Posix -> (Result Timeout Protocol.Message -> msg) -> Request msg
 initRequest timeout tagger =
     { inbox = ""
     , timeout = timeout
@@ -474,7 +472,7 @@ initRequestSubscription :
     -> String
     -> (Result Timeout Protocol.Message -> msg)
     -> RequestSubscription msg
-initRequestSubscription subject request tagger =
+initRequestSubscription subject req tagger =
     let
         ( cleanSubject, tag ) =
             splitSubject subject
@@ -483,7 +481,7 @@ initRequestSubscription subject request tagger =
     , tag = tag
     , inbox = ""
     , timeout = defaultTimeout
-    , request = request
+    , request = req
     , sid = ""
     , tagger = tagger
     }
@@ -518,35 +516,34 @@ requestSubscribe :
     -> String
     -> (Result Timeout Protocol.Message -> msg)
     -> NatsSub.Sub msg
-requestSubscribe subject request tagger =
-    NatsSub.RequestSubscribe subject request tagger
+requestSubscribe =
+    NatsSub.RequestSubscribe
 
 
-applyNatsSub : State msg -> NatsSub.Sub msg -> ( List String, List String, State msg, List (Cmd Msg) )
-applyNatsSub state sub =
+applyNatsSub : State msg -> NatsSub.Sub msg -> ( ( List String, List String ), State msg, List (Cmd Msg) )
+applyNatsSub state natsSub =
     -- for each sub, check if it already exists. If not, add it and send a SUB
     -- return updated state and a list of sid
-    case sub of
+    case natsSub of
         NatsSub.None ->
-            ( [], [], state, [] )
+            ( ( [], [] ), state, [] )
 
         NatsSub.OnConnect sub ->
-            ( []
-            , []
+            ( ( [], [] )
             , { state | onConnect = sub :: state.onConnect }
             , []
             )
 
         NatsSub.BatchSub list ->
             List.foldl
-                (\sub ( sids, rsids, state, cmds ) ->
+                (\sub ( ( sids, rsids ), fromState, cmds ) ->
                     let
-                        ( nSids, nRsids, nState, nCmds ) =
-                            applyNatsSub state sub
+                        ( ( nSids, nRsids ), nState, nCmds ) =
+                            applyNatsSub fromState sub
                     in
-                    ( sids ++ nSids, rsids ++ nRsids, nState, cmds ++ nCmds )
+                    ( ( sids ++ nSids, rsids ++ nRsids ), nState, cmds ++ nCmds )
                 )
-                ( [], [], state, [] )
+                ( ( [], [] ), state, [] )
                 list
 
         NatsSub.Subscribe subject queueGroup tagger ->
@@ -563,7 +560,7 @@ applyNatsSub state sub =
                         (Dict.values state.subscriptions)
             of
                 Just sub ->
-                    ( [ sub.sid ], [], state, [] )
+                    ( ( [ sub.sid ], [] ), state, [] )
 
                 Nothing ->
                     let
@@ -571,9 +568,9 @@ applyNatsSub state sub =
                             initSubscription subject queueGroup tagger
                                 |> setupSubscription state
                     in
-                    ( [ nSub.sid ], [], nState, [ cmd ] )
+                    ( ( [ nSub.sid ], [] ), nState, [ cmd ] )
 
-        NatsSub.RequestSubscribe subject request tagger ->
+        NatsSub.RequestSubscribe subject req tagger ->
             let
                 ( cleanSubject, tag ) =
                     splitSubject subject
@@ -587,15 +584,15 @@ applyNatsSub state sub =
                         (Dict.values state.requestSubscriptions)
             of
                 Just rsub ->
-                    ( [], [ rsub.sid ], state, [] )
+                    ( ( [], [ rsub.sid ] ), state, [] )
 
                 Nothing ->
                     let
                         ( nRep, nState, cmd ) =
-                            initRequestSubscription subject request tagger
+                            initRequestSubscription subject req tagger
                                 |> setupRequestSubscription state
                     in
-                    ( [], [ nRep.sid ], nState, [ cmd ] )
+                    ( ( [], [ nRep.sid ] ), nState, [ cmd ] )
 
 
 cleanSubs : State msg -> List String -> List String -> ( State msg, List (Cmd Msg) )
@@ -631,7 +628,7 @@ mergeNatsSub state sub =
     -- apply the sub
     -- for each establish sub without an incoming sub, delete it and send a UNSUB
     let
-        ( sids, rsids, nState, subCmds ) =
+        ( ( sids, rsids ), nState, subCmds ) =
             applyNatsSub { state | onConnect = [] } sub
 
         ( finalState, unsubCmds ) =
@@ -669,12 +666,12 @@ mergeNatsCmd state cmd =
 
         NatsCmd.Batch natsCmds ->
             let
-                folder natsCmd ( state, cmds ) =
+                folder natsCmd ( instate, incmds ) =
                     let
-                        ( newState, cmd ) =
-                            mergeNatsCmd state natsCmd
+                        ( s, c ) =
+                            mergeNatsCmd instate natsCmd
                     in
-                    ( newState, cmd :: cmds )
+                    ( s, c :: incmds )
 
                 ( newState, cmds ) =
                     List.foldl folder ( state, [] ) natsCmds
@@ -725,11 +722,11 @@ setupSubscription state subscription =
 
 
 setupRequest : State msg -> Request msg -> ( Request msg, State msg )
-setupRequest state request =
+setupRequest state baserequest =
     let
         req : Request msg
         req =
-            { request
+            { baserequest
                 | sid = String.fromInt state.sidCounter
             }
     in
@@ -783,6 +780,6 @@ request =
 
 {-| Send a request with a custom timeout
 -}
-requestWithTimeout : Time -> String -> String -> (Result Timeout Protocol.Message -> msg) -> NatsCmd.Cmd msg
+requestWithTimeout : Float -> String -> String -> (Result Timeout Protocol.Message -> msg) -> NatsCmd.Cmd msg
 requestWithTimeout =
     NatsCmd.Request
