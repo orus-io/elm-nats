@@ -29,8 +29,10 @@ Nats module. You need to wire it into your application.
     import Nats.Sub as NatsSub
     ```
 
-1. Add a state to your top-level model, or at least one that contains all
-   the components that uses the Nats API.
+1. Add a state for each of the nats connection your application handles to your
+   top-level model, or at least one that contains all the components that uses
+   the Nats API.
+
 
     ```elm
     type alias Model =
@@ -47,12 +49,11 @@ Nats module. You need to wire it into your application.
        | NatsMsg Nats.Msg
    ```
 
-1. Initialize the State with the websocket url. If working locally with
-   nats-websocket-gw, it should be "ws://localhost:8910/nats":
+1. Initialize the State.
 
     ```elm
     init =
-        { nats = Nats.init NatsMsg "WEBSOCKET_URL"
+        { nats = Nats.init
         }
     ```
 
@@ -62,7 +63,7 @@ Nats module. You need to wire it into your application.
     ```elm
     init =
         { nats =
-            Nats.init NatsMsg "WEBSOCKET_URL"
+            Nats.init
                 |> Nats.setAuthToken "A token"
                 |> Nats.setName "My client name"
         }
@@ -73,10 +74,33 @@ Nats module. You need to wire it into your application.
 
    ```elm
    subscriptions model =
-       Nats.listen model.state
+       Sub.batch
+           -- natsReceive is a subscription that receives all the messages
+           -- from the nats connection.
+           [ natsReceive Nats.receive
+           , Nats.listen model.state
+           ]
+           |> Sub.map NatsMsg
 
    natsSubscriptions model =
        NatsSub.none
+   ```
+
+
+1. Define a handleNatsSideEffects that will translate Nats side effects into
+   concrete commands or messages:
+
+   ```elm
+   handleNatsSideEffects : List (Nats.SideEffect Msg) -> Model -> ( Model, Cmd Msg )
+   handleNatsSideEffects =
+       Nats.handleNatsSideEffects
+           { update = update
+           , tagger = NatsMsg
+           {- natsSend is a (String -> Cmd msg), that results in sending the
+              given message to the nats connection.
+           -}
+           , natsSend = natsSend
+           }
    ```
 
 
@@ -86,14 +110,15 @@ Nats module. You need to wire it into your application.
    ```elm
    mergeNats : ( Model, NatsCmd.Cmd Msg, Cmd Msg ) -> ( Model, Cmd Msg )
    mergeNats ( model, natsCmd, cmd ) =
-       let
-           ( natsState, extraCmd ) =
-               Nats.merge model.nats (natsSubscriptions model) natsCmd
-       in
-           { model
-               | nats = natsState
-           }
-               ! [ cmd, extraCmd ]
+        let
+            ( natsState, sideEffects ) =
+                Nats.merge model.nats (natsSubscriptions model) natsCmd
+        in
+        handleNatsSideEffects sideEffects
+            { model
+                | nats = natsState
+            }
+            |> addCmd cmd  -- addCmd is imported from Janiczek/cmd-extra
    ```
 
 
@@ -106,7 +131,7 @@ Nats module. You need to wire it into your application.
        mergeNats
            (case msg of
                NoOp ->
-                   
+
                    ( model, NatsCmd.none, Cmd.none )
                NatsMsg natsMsg ->
                    let
@@ -120,8 +145,53 @@ Nats module. You need to wire it into your application.
                        , natsCmd
                        )
            )
-                   
+
    ```
+
+1. Plug an actual websocket connection and the Nats state, for example with
+   ports:
+
+   ```elm
+    port natsSend : String -> Cmd msg
+
+
+    port natsReceive : (String -> msg) -> Sub msg
+   ```
+
+   ```html
+   <script>
+       var app = Elm.Main.init();
+
+       var socket = null;
+       try {
+           socket = new WebSocket("ws://localhost:8910/nats");
+
+       } catch (exception) {
+           console.error(exception);
+       }
+
+       if (socket !== null) {
+           var sendToNats = function(data) {
+               socket.send(data);
+           };
+           socket.onerror = function(error) {
+               console.error(error);
+           };
+
+           socket.onopen = function(event) {
+               app.ports.natsSend.subscribe(sendToNats);
+
+               this.onclose = function(event) {
+                   app.ports.natsSend.unsubscribe(sendToNats);
+               };
+
+               this.onmessage = function(event) {
+                   app.ports.natsReceive.send(event.data);
+               };
+           };
+       }
+   </script>
+    ```
 
 ## Usage
 
