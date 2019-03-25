@@ -1,14 +1,27 @@
-module Main exposing (main)
+port module Main exposing (main)
 
-import Html exposing (Html, text, div, img, button, ul, li, p, input, label, h1, h3, h4, a)
-import Html.Attributes exposing (src, width, style, type_, class, placeholder, href)
+import Browser
+import Cmd.Extra exposing (addCmd, addCmds, withCmd, withCmds)
+import Html exposing (Html, a, button, div, h1, h3, h4, img, input, label, li, p, text, ul)
+import Html.Attributes exposing (class, href, placeholder, src, style, type_, width)
 import Html.Events exposing (onClick, onInput)
 import Nats
-import Nats.Protocol
 import Nats.Cmd as NatsCmd
-import Nats.Sub as NatsSub
 import Nats.Errors exposing (Timeout)
+import Nats.Protocol
+import Nats.Sub as NatsSub
 import SubComp
+
+
+
+---- PORTS ----
+
+
+port natsSend : String -> Cmd msg
+
+
+port natsReceive : (String -> msg) -> Sub msg
+
 
 
 ---- MODEL ----
@@ -22,22 +35,22 @@ type alias Model =
     }
 
 
-init : ( Model, Cmd Msg )
-init =
+init : () -> ( Model, Cmd Msg )
+init () =
     let
         nats =
             Nats.init NatsMsg "ws://localhost:8910/nats"
                 |> Nats.setName "elm-nats-demo"
     in
-        mergeNats
-            ( { nats = { nats | debug = True }
-              , subcomp = SubComp.init
-              , inputText = ""
-              , response = Nothing
-              }
-            , NatsCmd.none
-            , Cmd.none
-            )
+    mergeNats
+        ( { nats = { nats | debug = True }
+          , subcomp = SubComp.init
+          , inputText = ""
+          , response = Nothing
+          }
+        , NatsCmd.none
+        , Cmd.none
+        )
 
 
 
@@ -67,16 +80,26 @@ receiveResponse result =
             RequestError
 
 
+handleNatsSideEffects : List (Nats.SideEffect Msg) -> Model -> ( Model, Cmd Msg )
+handleNatsSideEffects =
+    Nats.handleNatsSideEffects
+        { update = update
+        , tagger = NatsMsg
+        , natsSend = natsSend
+        }
+
+
 mergeNats : ( Model, NatsCmd.Cmd Msg, Cmd Msg ) -> ( Model, Cmd Msg )
 mergeNats ( model, natsCmd, cmd ) =
     let
-        ( natsState, extraCmd ) =
+        ( natsState, sideEffects ) =
             Nats.merge model.nats (natsSubscriptions model) natsCmd
     in
+    handleNatsSideEffects sideEffects
         { model
             | nats = natsState
         }
-            ! [ cmd, extraCmd ]
+        |> addCmd cmd
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -85,31 +108,35 @@ update msg model =
         (case msg of
             NatsMsg natsMsg ->
                 let
-                    ( nats, natsCmd ) =
+                    ( nats, sideEffects ) =
                         Nats.update natsMsg model.nats
+
+                    ( newModel, cmd ) =
+                        handleNatsSideEffects sideEffects
+                            { model
+                                | nats = nats
+                            }
                 in
-                    ( { model
-                        | nats = nats
-                      }
-                    , NatsCmd.none
-                    , natsCmd
-                    )
+                ( newModel
+                , NatsCmd.none
+                , cmd
+                )
 
             SubCompMsg subcompMsg ->
                 let
                     ( subcomp, subcompNatsCmd, subcompCmd ) =
                         SubComp.update subcompMsg model.subcomp
                 in
-                    ( { model
-                        | subcomp = subcomp
-                      }
-                    , (NatsCmd.map SubCompMsg subcompNatsCmd)
-                    , (Cmd.map SubCompMsg subcompCmd)
-                    )
+                ( { model
+                    | subcomp = subcomp
+                  }
+                , NatsCmd.map SubCompMsg subcompNatsCmd
+                , Cmd.map SubCompMsg subcompCmd
+                )
 
             NatsConnect info ->
                 ( model
-                , Nats.publish "test.subject" (toString info)
+                , Nats.publish "test.subject" (Debug.toString info)
                 , Cmd.none
                 )
 
@@ -181,30 +208,30 @@ scaffolding boxes =
             ]
         , let
             ( col1, col2 ) =
-                List.partition (\( n, box ) -> n % 2 == 0) <|
+                List.partition (\( n, box ) -> modBy 2 n == 0) <|
                     List.map2
                         (\n box -> ( n, panel box ))
                         (List.range 0 50)
                         boxes
           in
-            div [ class "row" ]
-                [ div [ class "col-sm-12" ]
-                    [ panel
-                        [ h1 [] [ text "Elm NATS demonstration mini-app" ]
-                        , p [] [ text "This mini-app demonstration pub, sub and req/rep" ]
-                        ]
+          div [ class "row" ]
+            [ div [ class "col-sm-12" ]
+                [ panel
+                    [ h1 [] [ text "Elm NATS demonstration mini-app" ]
+                    , p [] [ text "This mini-app demonstration pub, sub and req/rep" ]
                     ]
-                , div [ class "col-sm-6" ] <|
-                    List.map Tuple.second <|
-                        col1
-                , div [ class "col-sm-6" ] <|
-                    List.map Tuple.second <|
-                        col2
                 ]
+            , div [ class "col-sm-6" ] <|
+                List.map Tuple.second <|
+                    col1
+            , div [ class "col-sm-6" ] <|
+                List.map Tuple.second <|
+                    col2
+            ]
         ]
 
 
-view : Model -> Html Msg
+view : Model -> Browser.Document Msg
 view model =
     let
         ready =
@@ -215,7 +242,9 @@ view model =
                 Nothing ->
                     False
     in
-        scaffolding <|
+    { title = "Elm Nats Demo"
+    , body =
+        [ scaffolding <|
             [ [ h4 [] [ text "Here is what we know about the NATS server" ]
               , case model.nats.serverInfo of
                     Just info ->
@@ -268,15 +297,17 @@ view model =
                     |> Html.map SubCompMsg
               ]
             ]
+        ]
+    }
 
 
 
 ---- PROGRAM ----
 
 
-main : Program Never Model Msg
+main : Program () Model Msg
 main =
-    Html.program
+    Browser.document
         { view = view
         , init = init
         , update = update
@@ -299,4 +330,9 @@ natsSubscriptions model =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    Nats.listen model.nats
+    Sub.batch
+        [ natsReceive Nats.receive
+        , Nats.listen
+            model.nats
+        ]
+        |> Sub.map NatsMsg

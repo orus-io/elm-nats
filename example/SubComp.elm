@@ -1,11 +1,11 @@
-module SubComp exposing (..)
+module SubComp exposing (Model, Msg(..), init, natsSubscriptions, receive, update, view)
 
-import Html exposing (Html, text, div, img, button, ul, li, p, h4)
-import Html.Attributes exposing (src, width, style, class)
+import Html exposing (Html, button, div, h4, img, li, p, text, ul)
+import Html.Attributes exposing (class, src, style, width)
 import Html.Events exposing (onClick)
 import Nats
-import Nats.Protocol exposing (Message)
 import Nats.Cmd as NatsCmd
+import Nats.Protocol exposing (Message)
 import Nats.Sub as NatsSub
 
 
@@ -36,7 +36,7 @@ receive n natsMessage =
 natsSubscriptions : Model -> NatsSub.Sub Msg
 natsSubscriptions model =
     List.range 0 (model.subCounter - 1)
-        |> List.map (\n -> receive n |> Nats.subscribe ("test.subject#Subcomp" ++ toString n))
+        |> List.map (\n -> receive n |> Nats.subscribe ("test.subject#Subcomp" ++ String.fromInt n))
         |> NatsSub.batch
 
 
@@ -56,6 +56,7 @@ update msg model =
                 | subCounter =
                     if model.subCounter > 0 then
                         model.subCounter - 1
+
                     else
                         0
               }
@@ -65,7 +66,7 @@ update msg model =
 
         Receive n data ->
             ( { model
-                | received = (toString n ++ ": " ++ data) :: model.received
+                | received = (String.fromInt n ++ ": " ++ data) :: model.received
               }
             , NatsCmd.none
             , Cmd.none
@@ -87,7 +88,7 @@ view model =
             , onClick Unsubscribe
             ]
             [ text "Unsubscribe" ]
-        , p [] [ text <| "Current subscriptions: " ++ toString model.subCounter ]
+        , p [] [ text <| "Current subscriptions: " ++ String.fromInt model.subCounter ]
         , p [] [ text "Here are the received messages, prefixed with a subscription id (most recent are on top):" ]
         , ul [] <|
             List.map

@@ -17,7 +17,7 @@ import Time exposing (Posix)
 -}
 type Cmd msg
     = Publish String String String
-    | Request Posix String String (Result Timeout Protocol.Message -> msg)
+    | Request Float String String (Result Timeout Protocol.Message -> msg)
     | Batch (List (Cmd msg))
     | None
 
