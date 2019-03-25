@@ -39,7 +39,7 @@ init : () -> ( Model, Cmd Msg )
 init () =
     let
         nats =
-            Nats.init NatsMsg
+            Nats.init
                 |> Nats.setName "elm-nats-demo"
     in
     mergeNats

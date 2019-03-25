@@ -113,11 +113,10 @@ type alias RequestSubscription msg =
     }
 
 
-{-| The NATS state to add to the application model (once)
+{-| The NATS state to add to the application model (once for each connection)
 -}
 type alias State msg =
-    { tagger : Msg -> msg
-    , onConnect : List (Protocol.ServerInfo -> msg)
+    { onConnect : List (Protocol.ServerInfo -> msg)
     , connectOptions : Protocol.ConnectOptions
     , sidCounter : Int
     , subscriptions : Dict Sid (Subscription msg)
@@ -160,10 +159,9 @@ listen state =
 
 {-| Initialize a Nats State for a given websocket URL
 -}
-init : (Msg -> msg) -> State msg
-init tagger =
-    { tagger = tagger
-    , onConnect = []
+init : State msg
+init =
+    { onConnect = []
     , connectOptions = defaultConnectOptions
     , sidCounter = 0
     , subscriptions = Dict.empty
