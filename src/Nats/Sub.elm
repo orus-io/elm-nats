@@ -19,6 +19,7 @@ type Sub msg
     = Subscribe String String (Protocol.Message -> msg)
     | RequestSubscribe String String (Result Timeout Protocol.Message -> msg)
     | OnConnect (Protocol.ServerInfo -> msg)
+    | OnError (String -> msg)
     | BatchSub (List (Sub msg))
     | None
 
@@ -63,6 +64,9 @@ map aToMsg sub =
 
         OnConnect tagger ->
             OnConnect <| tagger >> aToMsg
+
+        OnError tagger ->
+            OnError <| tagger >> aToMsg
 
         BatchSub list ->
             BatchSub <| List.map (map aToMsg) list

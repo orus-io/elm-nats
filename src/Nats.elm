@@ -1,6 +1,6 @@
 module Nats exposing
     ( State, Msg, SideEffect(..)
-    , subscribe, queuesubscribe, requestSubscribe, publish, publishRequest, request, requestWithTimeout, onConnect, compile
+    , subscribe, queuesubscribe, requestSubscribe, publish, publishRequest, request, requestWithTimeout, onConnect, onError, compile
     , init, update, merge, listen, handleNatsSideEffects, receive
     , setAuthToken, setUserPass, setName
     )
@@ -20,7 +20,7 @@ proxy must be used. The only compatible one is
 
 # Operations
 
-@docs subscribe, queuesubscribe, requestSubscribe, publish, publishRequest, request, requestWithTimeout, onConnect, compile
+@docs subscribe, queuesubscribe, requestSubscribe, publish, publishRequest, request, requestWithTimeout, onConnect, onError, compile
 
 
 # TEA entry points
@@ -117,6 +117,7 @@ type alias RequestSubscription msg =
 -}
 type alias State msg =
     { onConnect : List (Protocol.ServerInfo -> msg)
+    , onError : List (String -> msg)
     , connectOptions : Protocol.ConnectOptions
     , sidCounter : Int
     , subscriptions : Dict Sid (Subscription msg)
@@ -162,6 +163,7 @@ listen state =
 init : State msg
 init =
     { onConnect = []
+    , onError = []
     , connectOptions = defaultConnectOptions
     , sidCounter = 0
     , subscriptions = Dict.empty
@@ -259,6 +261,11 @@ update msg state =
     case msg of
         Receive op ->
             case op of
+                Protocol.ERR err ->
+                    ( state
+                    , List.map (\x -> x err |> AppMsg) state.onError
+                    )
+
                 Protocol.PING ->
                     ( state
                     , [ NatsOp Protocol.PONG ]
@@ -454,6 +461,13 @@ onConnect tagger =
     NatsSub.OnConnect tagger
 
 
+{-| Subscribe to errors
+-}
+onError : (String -> msg) -> NatsSub.Sub msg
+onError tagger =
+    NatsSub.OnError tagger
+
+
 {-| a basic nats subscription
 -}
 subscribe : String -> (Protocol.Message -> msg) -> NatsSub.Sub msg
@@ -491,6 +505,12 @@ applyNatsSub state natsSub =
         NatsSub.OnConnect sub ->
             ( ( [], [] )
             , { state | onConnect = sub :: state.onConnect }
+            , []
+            )
+
+        NatsSub.OnError sub ->
+            ( ( [], [] )
+            , { state | onError = sub :: state.onError }
             , []
             )
 
