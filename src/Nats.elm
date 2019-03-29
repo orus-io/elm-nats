@@ -2,7 +2,7 @@ module Nats exposing
     ( State, Msg, SideEffect(..)
     , subscribe, queuesubscribe, requestSubscribe, publish, publishRequest, request, requestWithTimeout, onConnect, onError, compile
     , init, update, merge, listen, handleNatsSideEffects, receive
-    , setAuthToken, setUserPass, setName
+    , clearAuth, setAuthToken, setUserPass, setName
     )
 
 {-| This library provides a pure elm implementation of the NATS client
@@ -30,7 +30,7 @@ proxy must be used. The only compatible one is
 
 # Settings
 
-@docs setAuthToken, setUserPass, setName
+@docs clearAuth, setAuthToken, setUserPass, setName
 
 -}
 
@@ -172,6 +172,24 @@ init =
     , serverInfo = Nothing
     , inboxPrefix = "_INBOX."
     , debug = False
+    }
+
+
+{-| clear the auth fields
+-}
+clearAuth : State msg -> State msg
+clearAuth state =
+    let
+        connectOptions =
+            state.connectOptions
+    in
+    { state
+        | connectOptions =
+            { connectOptions
+                | auth_token = Nothing
+                , user = Nothing
+                , pass = Nothing
+            }
     }
 
 
