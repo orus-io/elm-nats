@@ -50,7 +50,7 @@ import Time exposing (Posix)
 
 defaultTimeout : Float
 defaultTimeout =
-    30
+    30 * 1000
 
 
 defaultConnectOptions : Protocol.ConnectOptions
