@@ -74,8 +74,6 @@ defaultConnectOptions =
 type Msg
     = Receive Protocol.Operation
     | ReceptionError String
-    | RequestInbox ( String, String ) String String
-    | RequestSubscribeInbox String String
     | RequestTimeout Sid Posix
 
 
@@ -119,6 +117,7 @@ type alias State msg =
     { onConnect : List (Protocol.ServerInfo -> msg)
     , onError : List (String -> msg)
     , connectOptions : Protocol.ConnectOptions
+    , randomSeed : Random.Seed
     , sidCounter : Int
     , subscriptions : Dict Sid (Subscription msg)
     , requests : Dict Sid (Request msg)
@@ -160,12 +159,13 @@ listen state =
 
 {-| Initialize a Nats State for a given websocket URL
 -}
-init : State msg
-init =
+init : Random.Seed -> State msg
+init seed =
     { onConnect = []
     , onError = []
     , connectOptions = defaultConnectOptions
     , sidCounter = 0
+    , randomSeed = seed
     , subscriptions = Dict.empty
     , requests = Dict.empty
     , requestSubscriptions = Dict.empty
@@ -266,8 +266,7 @@ compile op =
 
 
 type SideEffect msg
-    = AppCmd (Cmd Msg)
-    | AppMsg msg
+    = AppMsg msg
     | NatsOp Protocol.Operation
 
 
@@ -347,61 +346,6 @@ update msg state =
             ( state
             , []
             )
-
-        RequestInbox ( subject, data ) sid inboxSuffix ->
-            case Dict.get sid state.requests of
-                Just req ->
-                    let
-                        newReq =
-                            { req
-                                | inbox = state.inboxPrefix ++ inboxSuffix
-                            }
-                    in
-                    ( { state
-                        | requests = Dict.insert sid newReq state.requests
-                      }
-                    , List.map NatsOp
-                        [ Protocol.SUB newReq.inbox "" newReq.sid
-                        , Protocol.PUB
-                            { subject = subject
-                            , replyTo = newReq.inbox
-                            , data = data
-                            }
-                        ]
-                    )
-
-                Nothing ->
-                    -- TODO report an error somehow ? crash the app ?
-                    ( state
-                    , []
-                    )
-
-        RequestSubscribeInbox sid inboxSuffix ->
-            case Dict.get sid state.requestSubscriptions of
-                Just rsub ->
-                    let
-                        newRSub =
-                            { rsub
-                                | inbox = state.inboxPrefix ++ inboxSuffix
-                            }
-                    in
-                    ( { state
-                        | requestSubscriptions = Dict.insert sid newRSub state.requestSubscriptions
-                      }
-                    , List.map NatsOp
-                        [ Protocol.SUB newRSub.inbox "" newRSub.sid
-                        , Protocol.PUB
-                            { subject = newRSub.subject
-                            , replyTo = newRSub.inbox
-                            , data = newRSub.request
-                            }
-                        ]
-                    )
-
-                Nothing ->
-                    ( state
-                    , []
-                    )
 
         RequestTimeout sid time ->
             case Dict.get sid state.requests of
@@ -655,15 +599,11 @@ mergeNatsCmd state cmd =
             -- prepare a subject-less subscription
             -- get a random id
             let
-                ( req, newState ) =
-                    setupRequest state <| initRequest timeout tagger
+                ( req, newState, sideEffects ) =
+                    setupRequest subject data state <| initRequest timeout tagger
             in
             ( newState
-            , [ AppCmd
-                    (Random.generate (RequestInbox ( subject, data ) req.sid) <|
-                        Random.String.string 12 Random.Char.latin
-                    )
-              ]
+            , sideEffects
             )
 
         NatsCmd.Batch natsCmds ->
@@ -723,42 +663,65 @@ setupSubscription state subscription =
     )
 
 
-setupRequest : State msg -> Request msg -> ( Request msg, State msg )
-setupRequest state baserequest =
+setupRequest : String -> String -> State msg -> Request msg -> ( Request msg, State msg, List (SideEffect msg) )
+setupRequest subject data state baserequest =
     let
+        ( inboxSuffix, seed ) =
+            Random.step (Random.String.string 12 Random.Char.latin) state.randomSeed
+
         req : Request msg
         req =
             { baserequest
                 | sid = String.fromInt state.sidCounter
+                , inbox = state.inboxPrefix ++ inboxSuffix
             }
     in
     ( req
     , { state
         | sidCounter = state.sidCounter + 1
         , requests = Dict.insert req.sid req state.requests
+        , randomSeed = seed
       }
+    , List.map NatsOp
+        [ Protocol.SUB req.inbox "" req.sid
+        , Protocol.PUB
+            { subject = subject
+            , replyTo = req.inbox
+            , data = data
+            }
+        ]
     )
 
 
 setupRequestSubscription : State msg -> RequestSubscription msg -> ( RequestSubscription msg, State msg, List (SideEffect msg) )
 setupRequestSubscription state requestSubscription =
     let
+        ( inboxSuffix, seed ) =
+            Random.step
+                (Random.String.string 12 Random.Char.latin)
+                state.randomSeed
+
         rsub : RequestSubscription msg
         rsub =
             { requestSubscription
                 | sid = String.fromInt state.sidCounter
+                , inbox = state.inboxPrefix ++ inboxSuffix
             }
     in
     ( rsub
     , { state
         | sidCounter = state.sidCounter + 1
         , requestSubscriptions = Dict.insert rsub.sid rsub state.requestSubscriptions
+        , randomSeed = seed
       }
-    , [ AppCmd
-            (Random.generate (RequestSubscribeInbox rsub.sid) <|
-                Random.String.string 12 Random.Char.latin
-            )
-      ]
+    , List.map NatsOp
+        [ Protocol.SUB rsub.inbox "" rsub.sid
+        , Protocol.PUB
+            { subject = rsub.subject
+            , replyTo = rsub.inbox
+            , data = rsub.request
+            }
+        ]
     )
 
 
@@ -790,26 +753,19 @@ requestWithTimeout =
     NatsCmd.Request
 
 
-type alias AppConfig msg model =
-    { update : msg -> model -> ( model, Cmd msg )
-    , tagger : Msg -> msg
-    }
+type alias AppUpdate msg model =
+    msg -> model -> ( model, Cmd msg )
 
 
 handleNatsSideEffect :
-    AppConfig msg model
+    AppUpdate msg model
     -> SideEffect msg
     -> model
     -> ( ( model, Cmd msg ), Maybe Protocol.Operation )
-handleNatsSideEffect config effect model =
+handleNatsSideEffect appUpdate effect model =
     case effect of
-        AppCmd cmd ->
-            ( ( model, Cmd.map config.tagger cmd )
-            , Nothing
-            )
-
         AppMsg msg ->
-            ( config.update msg model, Nothing )
+            ( appUpdate msg model, Nothing )
 
         NatsOp op ->
             ( ( model, Cmd.none )
@@ -818,14 +774,14 @@ handleNatsSideEffect config effect model =
 
 
 handleNatsSideEffects :
-    AppConfig msg model
+    AppUpdate msg model
     -> List (SideEffect msg)
     -> model
     -> ( ( model, Cmd msg ), List String )
-handleNatsSideEffects config effects model =
+handleNatsSideEffects appUpdate effects model =
     List.foldl
         (\effect ( ( m, cmd ), natsCmdList ) ->
-            handleNatsSideEffect config effect m
+            handleNatsSideEffect appUpdate effect m
                 |> Tuple.mapFirst (addCmd cmd)
                 |> Tuple.mapSecond
                     (Maybe.map (\c -> c :: natsCmdList)
