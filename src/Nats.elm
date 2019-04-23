@@ -793,7 +793,6 @@ requestWithTimeout =
 type alias AppConfig msg model =
     { update : msg -> model -> ( model, Cmd msg )
     , tagger : Msg -> msg
-    , natsSend : String -> Cmd msg
     }
 
 
@@ -801,30 +800,51 @@ handleNatsSideEffect :
     AppConfig msg model
     -> SideEffect msg
     -> model
-    -> ( model, Cmd msg )
+    -> ( ( model, Cmd msg ), Maybe Protocol.Operation )
 handleNatsSideEffect config effect model =
     case effect of
         AppCmd cmd ->
-            model
-                |> withCmd (Cmd.map config.tagger cmd)
+            ( ( model, Cmd.map config.tagger cmd )
+            , Nothing
+            )
 
         AppMsg msg ->
-            config.update msg model
+            ( config.update msg model, Nothing )
 
         NatsOp op ->
-            model
-                |> withCmd
-                    (compile op
-                        |> config.natsSend
-                    )
+            ( ( model, Cmd.none )
+            , Just op
+            )
 
 
-handleNatsSideEffects : AppConfig msg model -> List (SideEffect msg) -> model -> ( model, Cmd msg )
+handleNatsSideEffects :
+    AppConfig msg model
+    -> List (SideEffect msg)
+    -> model
+    -> ( ( model, Cmd msg ), List String )
 handleNatsSideEffects config effects model =
     List.foldl
-        (\effect ( m, cmd ) ->
+        (\effect ( ( m, cmd ), natsCmdList ) ->
             handleNatsSideEffect config effect m
-                |> addCmd cmd
+                |> Tuple.mapFirst (addCmd cmd)
+                |> Tuple.mapSecond
+                    (Maybe.map (\c -> c :: natsCmdList)
+                        >> Maybe.withDefault natsCmdList
+                    )
         )
-        ( model, Cmd.none )
+        ( ( model, Cmd.none ), [] )
         effects
+        |> Tuple.mapSecond List.reverse
+        |> Tuple.mapSecond (List.partition opIsSub)
+        |> Tuple.mapSecond (\( a, b ) -> a ++ b)
+        |> Tuple.mapSecond (List.map compile)
+
+
+opIsSub : Protocol.Operation -> Bool
+opIsSub op =
+    case op of
+        Protocol.SUB _ _ _ ->
+            True
+
+        _ ->
+            False
