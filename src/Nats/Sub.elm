@@ -1,4 +1,7 @@
-module Nats.Sub exposing (Sub(..), map, batch, none)
+module Nats.Sub exposing
+    ( Sub(..), map, batch, none
+    , tag
+    )
 
 {-| Nats Subscription types
 
@@ -73,6 +76,43 @@ map aToMsg sub =
 
         None ->
             None
+
+
+tagSubject : String -> String -> String
+tagSubject atag subject =
+    case String.split "#" subject |> List.reverse of
+        [] ->
+            "#" ++ atag
+
+        [ s ] ->
+            s ++ "#" ++ atag
+
+        t :: s ->
+            (t ++ "_" ++ atag)
+                :: s
+                |> List.reverse
+                |> String.join "#"
+
+
+{-| Add a #tag to the subscription(s) subject
+Id the subject already has a tag, the two are combined with a '\_' separator
+-}
+tag : String -> Sub msg -> Sub msg
+tag atag sub =
+    case sub of
+        Subscribe subject queueGroup tagger ->
+            Subscribe (tagSubject atag subject) queueGroup tagger
+
+        RequestSubscribe subject request tagger ->
+            RequestSubscribe (tagSubject atag subject) request tagger
+
+        BatchSub list ->
+            list
+                |> List.map (tag atag)
+                |> BatchSub
+
+        any ->
+            any
 
 
 {-| An null subscription
