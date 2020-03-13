@@ -57,15 +57,15 @@ type alias ConnectOptions =
 
 
 {-
-   CONNECT 	Client 	Sent to server to specify connection information
-   PUB 	Client 	Publish a message to a subject, with optional reply subject
-   SUB 	Client 	Subscribe to a subject (or subject wildcard)
-   UNSUB 	Client 	Unsubscribe (or auto-unsubscribe) from subject
-   MSG 	Server 	Delivers a message payload to a subscriber
-   PING 	Both 	PING keep-alive message
-   PONG 	Both 	PONG keep-alive response
-   +OK 	Server 	Acknowledges well-formed protocol message in verbose mode
-   -ERR 	Server 	Indicates a protocol error. Will cause client disconnect.
+   CONNECT Client  Sent to server to specify connection information
+   PUB     Client  Publish a message to a subject, with optional reply subject
+   SUB     Client  Subscribe to a subject (or subject wildcard)
+   UNSUB   Client  Unsubscribe (or auto-unsubscribe) from subject
+   MSG     Server  Delivers a message payload to a subscriber
+   PING    Both    PING keep-alive message
+   PONG    Both    PONG keep-alive response
+   +OK     Server  Acknowledges well-formed protocol message in verbose mode
+   -ERR    Server  Indicates a protocol error. Will cause client disconnect.
 -}
 
 
