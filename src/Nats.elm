@@ -1,806 +1,560 @@
 module Nats exposing
-    ( State, Msg, SideEffect(..)
-    , subscribe, queuesubscribe, requestSubscribe, publish, publishRequest, request, requestWithTimeout, onConnect, onError, compile
-    , init, update, merge, listen, handleNatsSideEffects, receive
-    , clearAuth, setAuthToken, setUserPass, setName
+    ( Effect
+    , Msg
+    , State
+    , applyEffectAndSub
+    , batch
+    , connect
+    , groupSubscribe
+    , init
+    , map
+    , none
+    , onSocket
+    , open
+    , publish
+    , request
+    , socketStatus
+    , subscribe
+    , update
     )
 
-{-| This library provides a pure elm implementation of the NATS client
-protocol on top of WebSocket.
-
-The NATS server does not support websocket natively, so a NATS/websocket
-proxy must be used. The only compatible one is
-<https://github.com/orus-io/nats-websocket-gw>
-
-
-# Types
-
-@docs State, Msg, SideEffect
-
-
-# Operations
-
-@docs subscribe, queuesubscribe, requestSubscribe, publish, publishRequest, request, requestWithTimeout, onConnect, onError, compile
-
-
-# TEA entry points
-
-@docs init, update, merge, listen, handleNatsSideEffects, receive
-
-
-# Settings
-
-@docs clearAuth, setAuthToken, setUserPass, setName
-
--}
-
-import Cmd.Extra exposing (addCmd, addCmds, withCmd, withCmds)
-import Debug
 import Dict exposing (Dict)
-import Nats.Cmd as NatsCmd
+import Nats.Config exposing (Config)
 import Nats.Errors exposing (Timeout)
+import Nats.Internal.SocketState as SocketState exposing (SocketState)
+import Nats.Internal.Types as Types
+import Nats.Nuid as Nuid exposing (Nuid)
+import Nats.PortsAPI as PortsAPI exposing (Ports)
 import Nats.Protocol as Protocol
-import Nats.Sub as NatsSub
+import Nats.Socket as Socket exposing (Socket)
+import Nats.Sub
 import Random
 import Random.Char
 import Random.String
 import Task
-import Time exposing (Posix)
+import Time
 
 
-defaultTimeout : Float
-defaultTimeout =
-    30 * 1000
+type alias Msg msg =
+    Types.Msg msg
 
 
-defaultConnectOptions : Protocol.ConnectOptions
-defaultConnectOptions =
-    { verbose = False
-    , pedantic = False
-
-    -- , ssl_required: Indicates whether the client requires an SSL connection.
-    , auth_token = Nothing
-    , user = Nothing
-    , pass = Nothing
-    , name = Nothing
-    , lang = "elm"
-    , version = "1.0.0"
-    , protocol = 0
-    }
-
-
-{-| Type of message the update function takes
--}
-type Msg
-    = Receive Protocol.Operation
-    | ReceptionError String
-    | RequestTimeout Sid Posix
-
-
-type alias Sid =
-    String
-
-
-{-| A NATS subscription
--}
-type alias Subscription msg =
-    { subject : String
-    , tag : String
-    , queueGroup : String
-    , sid : Sid
-    , tagger : Protocol.Message -> msg
-    }
-
-
-type alias Request msg =
-    { inbox : String
-    , timeout : Float
-    , sid : Sid
-    , tagger : Result Timeout Protocol.Message -> msg
-    }
-
-
-type alias RequestSubscription msg =
-    { subject : String
-    , tag : String
-    , request : String
-    , inbox : String
-    , timeout : Float
-    , sid : Sid
-    , tagger : Result Timeout Protocol.Message -> msg
-    }
-
-
-{-| The NATS state to add to the application model (once for each connection)
--}
 type alias State msg =
-    { onConnect : List (Protocol.ServerInfo -> msg)
-    , onError : List (String -> msg)
-    , connectOptions : Protocol.ConnectOptions
-    , randomSeed : Random.Seed
-    , sidCounter : Int
-    , subscriptions : Dict Sid (Subscription msg)
-    , requests : Dict Sid (Request msg)
-    , requestSubscriptions : Dict Sid (RequestSubscription msg)
-    , serverInfo : Maybe Protocol.ServerInfo
+    { sockets : Dict String (SocketState msg)
+    , defaultSocket : Maybe String
+    , nuid : Nuid
     , inboxPrefix : String
-    , debug : Bool
+    , time : Int  -- store the time in ms to make deadline calcs simpler
     }
 
 
-log : State msg -> String -> a -> a
-log state msg value =
-    if state.debug then
-        Debug.log msg value
-
-    else
-        value
-
-
-receive : String -> Msg
-receive message =
-    case Protocol.parseOperation message of
-        Err err ->
-            ReceptionError err
-
-        Ok op ->
-            Receive op
+type Effect msg
+    = Pub { sid : Maybe String, subject : String, replyTo : Maybe String, message : String }
+    | Open (Types.Socket msg)
+    | Request { sid : Maybe String, subject : String, message : String, timeout : Maybe Int, onResponse : Result Timeout String -> msg }
+    | None
+    | Batch (List (Effect msg))
 
 
-listen : State msg -> Sub Msg
-listen state =
-    Dict.values state.requests
-        |> List.map
-            (\req ->
-                RequestTimeout req.sid |> Time.every req.timeout
-            )
-        |> Sub.batch
+
+-- onOpen : (ServerInfo -> msg) -> Socket msg -> Socket msg
 
 
-{-| Initialize a Nats State for a given websocket URL
--}
-init : Random.Seed -> State msg
-init seed =
-    { onConnect = []
-    , onError = []
-    , connectOptions = defaultConnectOptions
-    , sidCounter = 0
-    , randomSeed = seed
-    , subscriptions = Dict.empty
-    , requests = Dict.empty
-    , requestSubscriptions = Dict.empty
-    , serverInfo = Nothing
-    , inboxPrefix = "_INBOX."
-    , debug = False
-    }
+open : Socket msg -> Effect msg
+open =
+    Open
 
 
-{-| clear the auth fields
--}
-clearAuth : State msg -> State msg
-clearAuth state =
+connect : Config msg -> State msg -> Sub msg
+connect cfg state =
+    Sub.batch
+        [ cfg.ports.onOpen Types.OnOpen
+        , cfg.ports.onClose Types.OnClose
+        , cfg.ports.onError Types.OnError
+        , cfg.ports.onMessage Types.OnMessage
+        , Time.every 1000 Types.OnTime
+        ]
+        |> Sub.map cfg.parentMsg
+
+
+socketStatus : String -> State msg -> Socket.Status
+socketStatus sid state =
+    state.sockets
+        |> Dict.get sid
+        |> Maybe.map .status
+        |> Maybe.withDefault Socket.Undefined
+
+
+init : Random.Seed -> Time.Posix -> State msg
+init seed now =
     let
-        connectOptions =
-            state.connectOptions
+        ( inboxPrefix, nuid ) =
+            Nuid.new seed
+                |> Nuid.next
     in
-    { state
-        | connectOptions =
-            { connectOptions
-                | auth_token = Nothing
-                , user = Nothing
-                , pass = Nothing
-            }
+    { sockets = Dict.empty
+    , defaultSocket = Nothing
+    , nuid = nuid
+    , inboxPrefix = inboxPrefix ++ "."
+    , time = Time.posixToMillis now
     }
 
 
-{-| Set the auth\_token connect option. Will be sent to the server each time
-'INFO' is received.
-
-    init =
-        { nats =
-            Nats.init NatsMsg "ws://yourserver.com/nats"
-                |> setAuthToken "YOUR_AUTH_TOKEN"
-        }
-
--}
-setAuthToken : String -> State msg -> State msg
-setAuthToken auth_token state =
+update : Config msg -> Msg msg -> State msg -> ( State msg, Cmd msg )
+update cfg msg state =
     let
-        connectOptions =
-            state.connectOptions
+        ( newState, msgs, cmds ) =
+            updateWithEffects cfg msg state
     in
-    { state
-        | connectOptions = { connectOptions | auth_token = Just auth_token }
-    }
+    ( newState
+    , Cmd.batch <|
+        Cmd.map cfg.parentMsg cmds
+            :: (msgs
+                    |> List.map (Task.succeed >> Task.perform identity)
+               )
+    )
 
 
-{-| Set the user and pass connect options. Will be sent to the server each time
-'INFO' is received.
+updateSocket :
+    Config msg
+    -> String
+    -> (SocketState msg -> ( Maybe (SocketState msg), List msg, Cmd (Msg msg) ))
+    -> State msg
+    -> ( State msg, List msg, Cmd (Msg msg) )
+updateSocket cfg sid fn state =
+    case Dict.get sid state.sockets of
+        Nothing ->
+            ( state, [], Cmd.none )
 
-    init =
-        { nats =
-            Nats.init NatsMsg "ws://yourserver.com/nats"
-                |> setUserPass "username" "password"
-        }
-
--}
-setUserPass : String -> String -> State msg -> State msg
-setUserPass user pass state =
-    let
-        connectOptions =
-            state.connectOptions
-    in
-    { state
-        | connectOptions =
-            { connectOptions
-                | user = Just user
-                , pass = Just pass
-            }
-    }
-
-
-{-| Set the name connect option. Will be sent to the server each time
-'INFO' is received.
-
-    init =
-        { nats =
-            Nats.init NatsMsg "ws://yourserver.com/nats"
-                |> setName "clientname"
-        }
-
--}
-setName : String -> State msg -> State msg
-setName name state =
-    let
-        connectOptions =
-            state.connectOptions
-    in
-    { state
-        | connectOptions = { connectOptions | name = Just name }
-    }
-
-
-compile : Protocol.Operation -> String
-compile op =
-    Protocol.toString op
-
-
-type SideEffect msg
-    = AppMsg msg
-    | NatsOp Protocol.Operation
-
-
-{-| The update function
-Will make sure PING commands from the server are honored with a PONG,
--}
-update : Msg -> State msg -> ( State msg, List (SideEffect msg) )
-update msg state =
-    case msg of
-        Receive op ->
-            case op of
-                Protocol.ERR err ->
-                    ( state
-                    , List.map (\x -> x err |> AppMsg) state.onError
-                    )
-
-                Protocol.PING ->
-                    ( state
-                    , [ NatsOp Protocol.PONG ]
-                    )
-
-                Protocol.INFO serverInfo ->
-                    -- A (re)connection. Update the server info, send CONNECT
-                    -- and reinitialize all the subscriptions
-                    ( { state | serverInfo = Just serverInfo }
-                    , List.concat
-                        [ List.map NatsOp <|
-                            List.concat
-                                [ [ Protocol.CONNECT state.connectOptions ]
-                                , List.map
-                                    (\sub ->
-                                        Protocol.SUB sub.subject sub.queueGroup sub.sid
-                                    )
-                                  <|
-                                    Dict.values state.subscriptions
-                                , List.map
-                                    (\req ->
-                                        Protocol.SUB req.inbox "" req.sid
-                                    )
-                                  <|
-                                    Dict.values state.requests
-                                ]
-                        , List.map (\x -> x serverInfo |> AppMsg) state.onConnect
-                        ]
-                    )
-
-                Protocol.MSG sid natsMsg ->
-                    case
-                        ( Dict.get sid state.subscriptions
-                        , Dict.get sid state.requestSubscriptions
-                        , Dict.get sid state.requests
-                        )
-                    of
-                        ( Just sub, _, _ ) ->
-                            ( state, [ AppMsg <| sub.tagger natsMsg ] )
-
-                        ( _, Just rsub, _ ) ->
-                            -- TODO detect EOS and UNSUB the corresponding sub
-                            ( state, [ AppMsg <| rsub.tagger (Ok natsMsg) ] )
-
-                        ( _, _, Just req ) ->
-                            ( { state
-                                | requests = Dict.remove sid state.requests
-                              }
-                            , [ AppMsg <| req.tagger (Ok natsMsg) ]
-                            )
-
-                        _ ->
-                            ( state, [] )
-
-                _ ->
-                    ( state
-                    , []
-                    )
-
-        ReceptionError err ->
-            ( state
-            , []
-            )
-
-        RequestTimeout sid time ->
-            case Dict.get sid state.requests of
-                Just req ->
+        Just socket ->
+            case fn socket of
+                ( Nothing, msgs, cmd ) ->
                     ( { state
-                        | requests = Dict.remove sid state.requests
+                        | sockets = Dict.remove sid state.sockets
                       }
-                    , [ AppMsg <| req.tagger (Err time) ]
+                    , msgs
+                    , cmd
                     )
 
-                Nothing ->
-                    ( state
-                    , []
+                ( Just newSocket, msgs, cmd ) ->
+                    ( { state
+                        | sockets = Dict.insert sid newSocket state.sockets
+                      }
+                    , msgs
+                    , cmd
                     )
 
 
-splitSubject : String -> ( String, String )
-splitSubject s =
-    let
-        sp =
-            String.split "#" s
-    in
-    ( Maybe.withDefault "" (List.head sp)
-    , Maybe.withDefault "" (List.head <| Maybe.withDefault [] <| List.tail sp)
-    )
-
-
-initSubscription : String -> String -> (Protocol.Message -> msg) -> Subscription msg
-initSubscription subject queueGroup tagger =
-    let
-        ( cleanSubject, tag ) =
-            splitSubject subject
-    in
-    { subject = cleanSubject
-    , tag = tag
-    , queueGroup = queueGroup
-    , sid = ""
-    , tagger = tagger
-    }
-
-
-initRequest : Float -> (Result Timeout Protocol.Message -> msg) -> Request msg
-initRequest timeout tagger =
-    { inbox = ""
-    , timeout = timeout
-    , sid = ""
-    , tagger = tagger
-    }
-
-
-initRequestSubscription :
-    String
-    -> String
-    -> (Result Timeout Protocol.Message -> msg)
-    -> RequestSubscription msg
-initRequestSubscription subject req tagger =
-    let
-        ( cleanSubject, tag ) =
-            splitSubject subject
-    in
-    { subject = cleanSubject
-    , tag = tag
-    , inbox = ""
-    , timeout = defaultTimeout
-    , request = req
-    , sid = ""
-    , tagger = tagger
-    }
-
-
-{-| subscribe to new connections
--}
-onConnect : (Protocol.ServerInfo -> msg) -> NatsSub.Sub msg
-onConnect tagger =
-    NatsSub.OnConnect tagger
-
-
-{-| Subscribe to errors
--}
-onError : (String -> msg) -> NatsSub.Sub msg
-onError tagger =
-    NatsSub.OnError tagger
-
-
-{-| a basic nats subscription
--}
-subscribe : String -> (Protocol.Message -> msg) -> NatsSub.Sub msg
-subscribe subject tagger =
-    NatsSub.Subscribe subject "" tagger
-
-
-{-| a queue nats subscription
--}
-queuesubscribe : String -> String -> (Protocol.Message -> msg) -> NatsSub.Sub msg
-queuesubscribe subject queueGroup tagger =
-    NatsSub.Subscribe subject queueGroup tagger
-
-
-{-| A streamed reply subscription
-Implements the "streamed reply" pattern from nrpc
--}
-requestSubscribe :
-    String
-    -> String
-    -> (Result Timeout Protocol.Message -> msg)
-    -> NatsSub.Sub msg
-requestSubscribe =
-    NatsSub.RequestSubscribe
-
-
-applyNatsSub : State msg -> NatsSub.Sub msg -> ( ( List String, List String ), State msg, List (SideEffect msg) )
-applyNatsSub state natsSub =
-    -- for each sub, check if it already exists. If not, add it and send a SUB
-    -- return updated state and a list of sid
-    case natsSub of
-        NatsSub.None ->
-            ( ( [], [] ), state, [] )
-
-        NatsSub.OnConnect sub ->
-            ( ( [], [] )
-            , { state | onConnect = sub :: state.onConnect }
+updateWithEffects : Config msg -> Msg msg -> State msg -> ( State msg, List msg, Cmd (Msg msg) )
+updateWithEffects cfg msg state =
+    case msg of
+        Types.OnOpen sid ->
+            ( { state
+                | sockets =
+                    state.sockets
+                        |> Dict.update sid (Maybe.map (SocketState.setStatus Socket.Opened))
+              }
             , []
+            , Cmd.none
             )
 
-        NatsSub.OnError sub ->
-            ( ( [], [] )
-            , { state | onError = sub :: state.onError }
-            , []
-            )
+        Types.OnClose sid ->
+            state
+                |> updateSocket cfg
+                    sid
+                    (\socket ->
+                        case socket.status of
+                            Socket.Closing ->
+                                ( Nothing, [], Cmd.none )
 
-        NatsSub.BatchSub list ->
-            List.foldl
-                (\sub ( ( sids, rsids ), fromState, cmds ) ->
-                    let
-                        ( ( nSids, nRsids ), nState, nCmds ) =
-                            applyNatsSub fromState sub
-                    in
-                    ( ( sids ++ nSids, rsids ++ nRsids ), nState, cmds ++ nCmds )
-                )
-                ( ( [], [] ), state, [] )
-                list
+                            _ ->
+                                ( Just <|
+                                    SocketState.setStatus
+                                        (Socket.Error "socket closed")
+                                        socket
+                                , []
+                                , Cmd.none
+                                )
+                    )
 
-        NatsSub.Subscribe subject queueGroup tagger ->
-            let
-                ( cleanSubject, tag ) =
-                    splitSubject subject
-            in
-            case
-                List.head <|
-                    List.filter
-                        (\sub ->
-                            sub.subject == cleanSubject && sub.queueGroup == queueGroup && sub.tag == tag
+        Types.OnError { sid, message } ->
+            state
+                |> updateSocket cfg
+                    sid
+                    (\socket ->
+                        ( Just <|
+                            SocketState.setStatus
+                                (Socket.Error message)
+                                socket
+                        , []
+                        , Cmd.none
                         )
-                        (Dict.values state.subscriptions)
-            of
-                Just sub ->
-                    ( ( [ sub.sid ], [] ), state, [] )
+                    )
 
+        Types.OnMessage { sid, message } ->
+            case Dict.get sid state.sockets of
                 Nothing ->
-                    let
-                        ( nSub, nState, cmd ) =
-                            initSubscription subject queueGroup tagger
-                                |> setupSubscription state
-                    in
-                    ( ( [ nSub.sid ], [] ), nState, [ cmd ] )
+                    ( state, [], Cmd.none )
 
-        NatsSub.RequestSubscribe subject req tagger ->
-            let
-                ( cleanSubject, tag ) =
-                    splitSubject subject
-            in
-            case
-                List.head <|
-                    List.filter
-                        (\sub ->
-                            sub.subject == cleanSubject && sub.tag == tag
+                Just socket ->
+                    let
+                        ( socketN, msgs, operations ) =
+                            SocketState.receive
+                                (message
+                                    |> cfg.debugLog ("receiving from " ++ sid)
+                                )
+                                socket
+                    in
+                    ( { state
+                        | sockets =
+                            state.sockets
+                                |> Dict.insert sid socketN
+                      }
+                    , msgs
+                    , operations
+                        |> List.map
+                            (\op ->
+                                { sid = sid
+                                , message =
+                                    Protocol.toString op
+                                }
+                                    |> doSend cfg
+                            )
+                        |> Cmd.batch
+                    )
+
+        Types.OnTime time ->
+            let msTime = Time.posixToMillis time
+                (sockets, msgs) =
+                    state.sockets
+                    |> Dict.foldl
+                        (\sid socket (d, msgList) ->
+                            let
+                                (s, m) =
+                                    SocketState.handleTimeouts msTime socket
+                            in
+                            (Dict.insert sid s d, List.append m msgList)
                         )
-                        (Dict.values state.requestSubscriptions)
-            of
-                Just rsub ->
-                    ( ( [], [ rsub.sid ] ), state, [] )
-
-                Nothing ->
-                    let
-                        ( nRep, nState, sideEffects ) =
-                            initRequestSubscription subject req tagger
-                                |> setupRequestSubscription state
-                    in
-                    ( ( [], [ nRep.sid ] ), nState, sideEffects )
-
-
-cleanSubs : State msg -> List String -> List String -> ( State msg, List (SideEffect msg) )
-cleanSubs state sids rsids =
-    let
-        ( keep, remove ) =
-            Dict.partition
-                (\sid v ->
-                    List.member sid sids
-                )
-                state.subscriptions
-
-        ( rkeep, rremove ) =
-            Dict.partition
-                (\rsid v ->
-                    List.member rsid rsids
-                )
-                state.requestSubscriptions
-    in
-    ( { state
-        | subscriptions = keep
-        , requestSubscriptions = rkeep
-      }
-    , List.concat
-        [ List.map (\a -> Protocol.UNSUB a 0 |> NatsOp) <| Dict.keys remove
-        , List.map (\a -> Protocol.UNSUB a 0 |> NatsOp) <| Dict.keys rremove
-        ]
-    )
-
-
-mergeNatsSub : State msg -> NatsSub.Sub msg -> ( State msg, List (SideEffect msg) )
-mergeNatsSub state sub =
-    -- apply the sub
-    -- for each establish sub without an incoming sub, delete it and send a UNSUB
-    let
-        ( ( sids, rsids ), nState, subCmds ) =
-            applyNatsSub { state | onConnect = [] } sub
-
-        ( finalState, unsubCmds ) =
-            cleanSubs nState sids rsids
-    in
-    ( finalState, subCmds ++ unsubCmds )
-
-
-{-| Apply NatsCmd in the Nats State and return side effects
--}
-mergeNatsCmd : State msg -> NatsCmd.Cmd msg -> ( State msg, List (SideEffect msg) )
-mergeNatsCmd state cmd =
-    case cmd of
-        NatsCmd.Publish subject replyTo data ->
-            ( state
-            , [ NatsOp <|
-                    Protocol.PUB
-                        { subject = subject
-                        , replyTo = replyTo
-                        , data = data
-                        }
-              ]
-            )
-
-        NatsCmd.Request timeout subject data tagger ->
-            -- prepare a subject-less subscription
-            -- get a random id
-            let
-                ( req, newState, sideEffects ) =
-                    setupRequest subject data state <| initRequest timeout tagger
+                        (Dict.empty, [])
             in
-            ( newState
-            , sideEffects
-            )
-
-        NatsCmd.Batch natsCmds ->
-            let
-                folder natsCmd ( instate, inEffects ) =
-                    let
-                        ( s, effects ) =
-                            mergeNatsCmd instate natsCmd
-                    in
-                    ( s, effects ++ inEffects )
-
-                ( newState, sideEffects ) =
-                    List.foldl folder ( state, [] ) natsCmds
-            in
-            ( newState
-            , sideEffects
-            )
-
-        NatsCmd.None ->
-            ( state
-            , []
+            ({ state | time = msTime
+            , sockets = sockets
+            }
+            , msgs
+            , Cmd.none
             )
 
 
-{-| merges nats subscriptions and commands into a Nats State, and returns
-side effects to apply
--}
-merge : State msg -> NatsSub.Sub msg -> NatsCmd.Cmd msg -> ( State msg, List (SideEffect msg) )
-merge state sub cmd =
-    let
-        ( subState, subEffects ) =
-            mergeNatsSub state sub
-
-        ( cmdState, cmdEffects ) =
-            mergeNatsCmd subState cmd
-    in
-    ( cmdState, subEffects ++ cmdEffects )
+batch : List (Effect msg) -> Effect msg
+batch =
+    Batch
 
 
-{-| Add a subscription to the State
--}
-setupSubscription : State msg -> Subscription msg -> ( Subscription msg, State msg, SideEffect msg )
-setupSubscription state subscription =
-    let
-        sub : Subscription msg
-        sub =
-            { subscription
-                | sid = String.fromInt state.sidCounter
-            }
-    in
-    ( sub
-    , { state
-        | sidCounter = state.sidCounter + 1
-        , subscriptions = Dict.insert sub.sid sub state.subscriptions
-      }
-    , NatsOp <| Protocol.SUB sub.subject sub.queueGroup sub.sid
-    )
+none : Effect msg
+none =
+    None
 
 
-setupRequest : String -> String -> State msg -> Request msg -> ( Request msg, State msg, List (SideEffect msg) )
-setupRequest subject data state baserequest =
-    let
-        ( inboxSuffix, seed ) =
-            Random.step (Random.String.string 12 Random.Char.latin) state.randomSeed
-
-        req : Request msg
-        req =
-            { baserequest
-                | sid = String.fromInt state.sidCounter
-                , inbox = state.inboxPrefix ++ inboxSuffix
-            }
-    in
-    ( req
-    , { state
-        | sidCounter = state.sidCounter + 1
-        , requests = Dict.insert req.sid req state.requests
-        , randomSeed = seed
-      }
-    , List.map NatsOp
-        [ Protocol.SUB req.inbox "" req.sid
-        , Protocol.PUB
-            { subject = subject
-            , replyTo = req.inbox
-            , data = data
-            }
-        ]
-    )
-
-
-setupRequestSubscription : State msg -> RequestSubscription msg -> ( RequestSubscription msg, State msg, List (SideEffect msg) )
-setupRequestSubscription state requestSubscription =
-    let
-        ( inboxSuffix, seed ) =
-            Random.step
-                (Random.String.string 12 Random.Char.latin)
-                state.randomSeed
-
-        rsub : RequestSubscription msg
-        rsub =
-            { requestSubscription
-                | sid = String.fromInt state.sidCounter
-                , inbox = state.inboxPrefix ++ inboxSuffix
-            }
-    in
-    ( rsub
-    , { state
-        | sidCounter = state.sidCounter + 1
-        , requestSubscriptions = Dict.insert rsub.sid rsub state.requestSubscriptions
-        , randomSeed = seed
-      }
-    , List.map NatsOp
-        [ Protocol.SUB rsub.inbox "" rsub.sid
-        , Protocol.PUB
-            { subject = rsub.subject
-            , replyTo = rsub.inbox
-            , data = rsub.request
-            }
-        ]
-    )
-
-
-{-| Publish a message on a subject
--}
-publish : String -> String -> NatsCmd.Cmd msg
-publish subject data =
-    NatsCmd.Publish subject "" data
-
-
-{-| Publish a message with a reply subject
--}
-publishRequest : String -> String -> String -> NatsCmd.Cmd msg
-publishRequest =
-    NatsCmd.Publish
-
-
-{-| Send a request
--}
-request : String -> String -> (Result Timeout Protocol.Message -> msg) -> NatsCmd.Cmd msg
-request =
-    NatsCmd.Request defaultTimeout
-
-
-{-| Send a request with a custom timeout
--}
-requestWithTimeout : Float -> String -> String -> (Result Timeout Protocol.Message -> msg) -> NatsCmd.Cmd msg
-requestWithTimeout =
-    NatsCmd.Request
-
-
-type alias AppUpdate msg model =
-    msg -> model -> ( model, Cmd msg )
-
-
-handleNatsSideEffect :
-    AppUpdate msg model
-    -> SideEffect msg
-    -> model
-    -> ( ( model, Cmd msg ), Maybe Protocol.Operation )
-handleNatsSideEffect appUpdate effect model =
+map : (a -> b) -> Effect a -> Effect b
+map fn effect =
     case effect of
-        AppMsg msg ->
-            ( appUpdate msg model, Nothing )
+        Open socket ->
+            Open <| Types.mapSocket fn socket
 
-        NatsOp op ->
-            ( ( model, Cmd.none )
-            , Just op
+        Pub pub ->
+            Pub pub
+
+        Request { sid, subject, message, onResponse, timeout } ->
+            Request
+                { sid = sid
+                , subject = subject
+                , message = message
+                , onResponse = onResponse >> fn
+                , timeout = timeout
+                }
+
+        Batch list ->
+            Batch <| List.map (map fn) list
+
+        None ->
+            None
+
+
+onSocket : String -> Effect msg -> Effect msg
+onSocket sid effect =
+    case effect of
+        Open socket ->
+            Open socket
+
+        Pub props ->
+            Pub { props | sid = Just sid }
+
+        Request req ->
+            Request { req | sid = Just sid }
+
+        Batch list ->
+            Batch <| List.map (onSocket sid) list
+
+        None ->
+            None
+
+
+nextInbox : State msg -> ( String, State msg )
+nextInbox state =
+    let 
+        (postfix, nuid) =
+            Nuid.next state.nuid
+    in
+    ( state.inboxPrefix ++ postfix, { state | nuid = nuid } )
+
+
+toCmd : Config msg -> Effect msg -> State msg -> ( State msg, Cmd msg )
+toCmd cfg effect state =
+    case effect of
+        Open (Types.Socket skt) ->
+            ( { state
+                | sockets =
+                    Dict.insert skt.id
+                        (Types.Socket skt
+                            |> SocketState.init
+                            |> SocketState.setStatus Socket.Opening
+                        )
+                        state.sockets
+                , defaultSocket =
+                    if skt.default || state.defaultSocket == Nothing then
+                        Just skt.id
+
+                    else
+                        state.defaultSocket
+              }
+            , cfg.ports.open ( skt.id, skt.url )
+                |> Cmd.map cfg.parentMsg
             )
 
+        Pub { sid, subject, replyTo, message } ->
+            case sid |> Maybe.withDefault (state.defaultSocket |> Maybe.withDefault "") of
+                "" ->
+                    let
+                        _ =
+                            cfg.debugLog "cannot publish message" "Could not determine the sid"
+                    in
+                    ( state, Cmd.none )
 
-handleNatsSideEffects :
-    AppUpdate msg model
-    -> List (SideEffect msg)
-    -> model
-    -> ( ( model, Cmd msg ), List String )
-handleNatsSideEffects appUpdate effects model =
-    List.foldl
-        (\effect ( ( m, cmd ), natsCmdList ) ->
-            handleNatsSideEffect appUpdate effect m
-                |> Tuple.mapFirst (addCmd cmd)
-                |> Tuple.mapSecond
-                    (Maybe.map (\c -> c :: natsCmdList)
-                        >> Maybe.withDefault natsCmdList
+                s ->
+                    ( state
+                    , doSend cfg
+                        { sid = s
+                        , message =
+                            Protocol.PUB
+                                { subject = subject
+                                , replyTo = replyTo |> Maybe.withDefault ""
+                                , data = message
+                                }
+                                |> Protocol.toString
+                        }
+                        |> Cmd.map cfg.parentMsg
                     )
-        )
-        ( ( model, Cmd.none ), [] )
-        effects
-        |> Tuple.mapSecond List.reverse
-        |> Tuple.mapSecond (List.partition opIsSub)
-        |> Tuple.mapSecond (\( a, b ) -> a ++ b)
-        |> Tuple.mapSecond (List.map compile)
+
+        Request { sid, subject, message, onResponse, timeout } ->
+            case sid |> Maybe.withDefault (state.defaultSocket |> Maybe.withDefault "") of
+                "" ->
+                    let
+                        _ =
+                            cfg.debugLog "cannot publish message" "Could not determine the sid"
+                    in
+                    ( state, Cmd.none )
+
+                s ->
+                    let
+                        ( inbox, state1 ) =
+                            nextInbox state
+
+                        ( nextState, msg, cmd ) =
+                            state1
+                                |> updateSocket cfg
+                                    s
+                                    (\socket ->
+                                        let
+                                            ( newSocket, ops ) =
+                                                SocketState.addRequest
+                                                    { subject = subject
+                                                    , inbox = inbox
+                                                    , message = message
+                                                    , onResponse = onResponse
+                                                    , deadline = state.time + 1000 * (timeout |> Maybe.withDefault 5)
+                                                    }
+                                                    socket
+                                        in
+                                        ( Just <| newSocket
+                                        , []
+                                        , ops
+                                            |> List.map
+                                                (\op ->
+                                                    doSend cfg
+                                                        { sid = s
+                                                        , message =
+                                                            Protocol.toString op
+                                                        }
+                                                )
+                                            |> Cmd.batch
+                                        )
+                                    )
+                    in
+                    ( nextState, Cmd.map cfg.parentMsg cmd )
+
+        Batch list ->
+            list
+                |> List.foldl
+                    (\eff ( st, cmd ) ->
+                        let
+                            ( newState, newCmd ) =
+                                toCmd cfg eff st
+                        in
+                        ( newState, newCmd :: cmd )
+                    )
+                    ( state, [] )
+                |> Tuple.mapSecond Cmd.batch
+
+        None ->
+            ( state, Cmd.none )
 
 
-opIsSub : Protocol.Operation -> Bool
-opIsSub op =
-    case op of
-        Protocol.SUB _ _ _ ->
-            True
+handleSub : Config msg -> Nats.Sub.Sub msg -> State msg -> ( State msg, Cmd msg )
+handleSub cfg sub state =
+    let
+        ( nState, cmd ) =
+            handleSubHelper cfg sub state
 
-        _ ->
-            False
+        ( sockets, opsCmds ) =
+            Dict.foldl
+                (\sid socket ( newSockets, cmds ) ->
+                    let
+                        ( nextSocket, nextOps ) =
+                            SocketState.finalizeSubscriptions socket
+
+                        nextCmd =
+                            nextOps
+                                |> List.map
+                                    (\op ->
+                                        doSend cfg
+                                            { sid = sid
+                                            , message =
+                                                Protocol.toString op
+                                            }
+                                            |> Cmd.map cfg.parentMsg
+                                    )
+                    in
+                    ( Dict.insert sid nextSocket newSockets, List.append nextCmd cmds )
+                )
+                ( Dict.empty, [] )
+                nState.sockets
+    in
+    ( { nState
+        | sockets = sockets
+      }
+    , cmd
+        :: opsCmds
+        |> Cmd.batch
+    )
+
+
+handleSubHelper : Config msg -> Nats.Sub.Sub msg -> State msg -> ( State msg, Cmd msg )
+handleSubHelper cfg sub state =
+    case sub of
+        Nats.Sub.Subscribe { sid, subject, group, onMessage } ->
+            case sid |> Maybe.withDefault (state.defaultSocket |> Maybe.withDefault "") of
+                "" ->
+                    let
+                        _ =
+                            cfg.debugLog "cannot subscribe" "Could not determine the sid"
+                    in
+                    ( state, Cmd.none )
+
+                s ->
+                    let
+                        ( newState, _, _ ) =
+                            state
+                                |> updateSocket cfg
+                                    s
+                                    (\socket ->
+                                        ( Just <| SocketState.addSubscription subject group onMessage socket
+                                        , []
+                                        , Cmd.none
+                                        )
+                                    )
+                    in
+                    ( newState, Cmd.none )
+
+        Nats.Sub.BatchSub list ->
+            list
+                |> List.foldl
+                    (\innerSub ( st, cmd ) ->
+                        let
+                            ( newState, newCmd ) =
+                                handleSubHelper cfg innerSub st
+                        in
+                        ( newState, newCmd :: cmd )
+                    )
+                    ( state, [] )
+                |> Tuple.mapSecond Cmd.batch
+
+        Nats.Sub.None ->
+            ( state, Cmd.none )
+
+
+applyEffectAndSub : Config msg -> Effect msg -> Nats.Sub.Sub msg -> State msg -> ( State msg, Cmd msg )
+applyEffectAndSub cfg effect sub state =
+    let
+        ( s1, cmd1 ) =
+            toCmd cfg effect state
+
+        ( s2, cmd2 ) =
+            handleSub cfg sub s1
+    in
+    ( s2, Cmd.batch [ cmd1, cmd2 ] )
+
+
+doSend : Config msg -> PortsAPI.Message -> Cmd (Msg msg)
+doSend cfg message =
+    let
+        _ =
+            cfg.debugLog ("sending to " ++ message.sid) message.message
+    in
+    cfg.ports.send message
+
+
+request : String -> String -> (Result Timeout String -> msg) -> Effect msg
+request subject message onResponse =
+    Request
+        { sid = Nothing
+        , subject = subject
+        , message = message
+        , onResponse = onResponse
+        , timeout = Nothing
+        }
+
+
+requestWithTimeout : Int -> String -> String -> (Result Timeout String -> msg) -> Effect msg
+requestWithTimeout timeout subject message onResponse =
+    Request
+        { sid = Nothing
+        , subject = subject
+        , message = message
+        , onResponse = onResponse
+        , timeout = Just timeout
+        }
+
+
+publish : String -> String -> Effect msg
+publish subject message =
+    Pub { sid = Nothing, subject = subject, replyTo = Nothing, message = message }
+
+
+subscribe : String -> (Protocol.Message -> msg) -> Nats.Sub.Sub msg
+subscribe subject =
+    groupSubscribe subject ""
+
+
+groupSubscribe : String -> String -> (Protocol.Message -> msg) -> Nats.Sub.Sub msg
+groupSubscribe subject group onMessage =
+    Nats.Sub.Subscribe { sid = Nothing, subject = subject, group = group, onMessage = onMessage }

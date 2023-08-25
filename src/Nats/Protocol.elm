@@ -1,4 +1,7 @@
-module Nats.Protocol exposing (Operation(..), Message, ServerInfo, ConnectOptions, parseOperation, toString)
+module Nats.Protocol exposing
+    ( Operation(..), Message, ServerInfo, ConnectOptions, parseOperation, toString
+    , OperationResult(..), PartialOperation
+    )
 
 {-| Provides types and utilities for the NATS protocol
 
@@ -18,6 +21,23 @@ type alias Message =
     { subject : String
     , replyTo : String
     , data : String
+    }
+
+
+type alias PartialMessage =
+    { subject : String
+    , sid : String
+    , replyTo : String
+    , size : Int
+    , data : String
+    }
+
+
+toMessage : PartialMessage -> Message
+toMessage { subject, replyTo, data } =
+    { subject = subject
+    , replyTo = replyTo
+    , data = data
     }
 
 
@@ -89,7 +109,7 @@ type
 
 messageRe : Maybe Regex
 messageRe =
-    Regex.fromString "^MSG ([a-zA-Z0-9._-]+) ([a-zA-Z0-9]+)( [a-zA-Z0-9._]+)? [0-9]+\\r\\n(.*)$"
+    Regex.fromString "^MSG ([a-zA-Z0-9._-]+) ([a-zA-Z0-9]+)( [a-zA-Z0-9._]+)? ([0-9]+)\\r\\n(.*)$"
 
 
 matchMessage : String -> Result String (List (Maybe String))
@@ -111,7 +131,7 @@ matchMessage str =
             Result.Err <| "Invalid MSG syntax: " ++ str
 
 
-parseMessage : String -> Result String ( String, Message )
+parseMessage : String -> Result String PartialMessage
 parseMessage str =
     case matchMessage str of
         Ok subm ->
@@ -133,65 +153,113 @@ parseMessage str =
                         v ->
                             v
 
+                size =
+                    List.drop 3 args
+                        |> List.head
+                        |> Maybe.withDefault ""
+                        |> String.toInt
+
                 payload =
-                    Maybe.withDefault "" (List.drop 3 args |> List.head)
+                    Maybe.withDefault "" (List.drop 4 args |> List.head)
             in
-            Ok
-                ( sid
-                , { subject = subject
-                  , replyTo = replyTo
-                  , data = payload
-                  }
-                )
+            case size of
+                Nothing ->
+                    Err "Invalid message size"
+
+                Just s ->
+                    Ok
+                        { subject = subject
+                        , sid = sid
+                        , replyTo = replyTo
+                        , size = s
+                        , data = payload
+                        }
 
         Err err ->
             Err err
 
 
+isComplete : PartialMessage -> Bool
+isComplete partial =
+    String.length partial.data == partial.size
+
+
+type alias PartialOperation =
+    PartialMessage
+
+
+type OperationResult
+    = Operation Operation
+    | Partial PartialOperation
+    | Error String
+
+
 {-| Parse an operation (generally received from the server)
 -}
-parseOperation : String -> Result String Operation
-parseOperation str =
-    let
-        stripped =
-            if String.endsWith "\u{000D}\n" str then
-                String.dropRight 2 str
+parseOperation : String -> Maybe PartialOperation -> OperationResult
+parseOperation str partialOp =
+    case partialOp of
+        Just partial ->
+            let
+                msg =
+                    { partial | data = String.append partial.data str }
+            in
+            if isComplete msg then
+                Operation <| MSG partial.sid <| toMessage partial
 
             else
-                str
-    in
-    case stripped of
-        "PING" ->
-            Ok PING
+                Partial msg
 
-        "PONG" ->
-            Ok PONG
+        Nothing ->
+            let
+                stripped =
+                    if String.endsWith "\u{000D}\n" str then
+                        String.dropRight 2 str
 
-        "+OK" ->
-            Ok OK
+                    else
+                        str
+            in
+            case stripped of
+                "PING" ->
+                    Operation PING
 
-        _ ->
-            if String.startsWith "INFO " stripped then
-                case JsonD.decodeString decodeServerInfo <| String.dropLeft 5 stripped of
-                    Ok info ->
-                        Ok <| INFO info
+                "PONG" ->
+                    Operation PONG
 
-                    Err err ->
-                        Err <| JsonD.errorToString err
+                "+OK" ->
+                    Operation OK
 
-            else if String.startsWith "-ERR " stripped then
-                Ok <| ERR <| String.dropRight 1 <| String.dropLeft 5 stripped
+                _ ->
+                    if String.startsWith "INFO " stripped then
+                        case JsonD.decodeString decodeServerInfo <| String.dropLeft 5 stripped of
+                            Ok info ->
+                                Operation <| INFO info
 
-            else if String.startsWith "MSG" stripped then
-                case parseMessage stripped of
-                    Result.Ok ( sid, message ) ->
-                        Ok <| MSG sid message
+                            Err err ->
+                                Error <| JsonD.errorToString err
 
-                    Result.Err err ->
-                        Err err
+                    else if String.startsWith "-ERR " stripped then
+                        Operation <| ERR <| String.dropRight 1 <| String.dropLeft 5 stripped
 
-            else
-                Err <| "Invalid command '" ++ stripped ++ "'"
+                    else if String.startsWith "MSG" stripped then
+                        case parseMessage stripped of
+                            Result.Ok partial ->
+                                if isComplete partial then
+                                    Operation <|
+                                        MSG partial.sid
+                                            { subject = partial.subject
+                                            , replyTo = partial.replyTo
+                                            , data = partial.data
+                                            }
+
+                                else
+                                    Partial partial
+
+                            Result.Err err ->
+                                Error err
+
+                    else
+                        Error <| "Invalid command '" ++ stripped ++ "'"
 
 
 {-| serialize an Operation (generally for sending to the server)

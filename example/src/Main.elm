@@ -1,26 +1,59 @@
 port module Main exposing (main)
 
 import Browser
-import Cmd.Extra exposing (addCmd, addCmds, withCmd, withCmds)
 import Html exposing (Html, a, button, div, h1, h3, h4, img, input, label, li, p, text, ul)
 import Html.Attributes exposing (class, href, placeholder, src, style, type_, width)
 import Html.Events exposing (onClick, onInput)
 import Nats
-import Nats.Cmd as NatsCmd
+import Nats.Config
 import Nats.Errors exposing (Timeout)
+import Nats.PortsAPI
 import Nats.Protocol
-import Nats.Sub as NatsSub
+import Nats.Socket
+import Nats.Sub
+import Random
 import SubComp
+import Time
 
 
 
 ---- PORTS ----
 
 
-port natsSend : String -> Cmd msg
+port natsOpen : ( String, String ) -> Cmd msg
 
 
-port natsReceive : (String -> msg) -> Sub msg
+port natsClose : String -> Cmd msg
+
+
+port natsOnOpen : (String -> msg) -> Sub msg
+
+
+port natsOnClose : (String -> msg) -> Sub msg
+
+
+port natsOnError : ({ sid : String, message : String } -> msg) -> Sub msg
+
+
+port natsOnMessage : (Nats.PortsAPI.Message -> msg) -> Sub msg
+
+
+port natsSend : Nats.PortsAPI.Message -> Cmd msg
+
+
+natsConfig : Nats.Config.Config Msg
+natsConfig =
+    Nats.Config.init NatsMsg
+        { open = natsOpen
+        , close = natsClose
+        , onOpen = natsOnOpen
+        , onClose = natsOnClose
+        , onError = natsOnError
+        , onMessage = natsOnMessage
+        , send = natsSend
+        }
+        |> Nats.Config.withDebug True
+        |> Nats.Config.withDebugLog Debug.log
 
 
 
@@ -29,28 +62,44 @@ port natsReceive : (String -> msg) -> Sub msg
 
 type alias Model =
     { nats : Nats.State Msg
+    , serverInfo : Maybe Nats.Protocol.ServerInfo
     , subcomp : SubComp.Model
     , inputText : String
     , response : Maybe String
     }
 
 
-init : () -> ( Model, Cmd Msg )
-init () =
+init : { now : Int } -> ( Model, Cmd Msg )
+init flags =
     let
         nats =
-            Nats.init
-                |> Nats.setName "elm-nats-demo"
+            Nats.init ( Random.initialSeed flags.now )
+            (Time.millisToPosix flags.now)
     in
-    mergeNats
-        ( { nats = { nats | debug = True }
-          , subcomp = SubComp.init
-          , inputText = ""
-          , response = Nothing
-          }
-        , NatsCmd.none
-        , Cmd.none
-        )
+    { nats = nats
+    , serverInfo = Nothing
+    , subcomp = SubComp.init
+    , inputText = ""
+    , response = Nothing
+    }
+        |> applyNatsEffect
+            (Nats.Socket.new "0" "ws://localhost:8087"
+                |> Nats.Socket.withUserPass "test" "test"
+                |> Nats.Socket.onOpen OnOpen
+                |> Nats.open
+            )
+
+
+applyNatsEffect : Nats.Effect Msg -> Model -> ( Model, Cmd Msg )
+applyNatsEffect effect model =
+    let
+        ( nats, cmd ) =
+            Nats.applyEffectAndSub natsConfig
+                effect
+                (natsSubscriptions model)
+                model.nats
+    in
+    ( { model | nats = nats }, cmd )
 
 
 
@@ -59,9 +108,10 @@ init () =
 
 type Msg
     = NoOp
-    | NatsMsg Nats.Msg
+    | NatsMsg (Nats.Msg Msg)
     | SubCompMsg SubComp.Msg
     | NatsConnect Nats.Protocol.ServerInfo
+    | OnOpen Nats.Protocol.ServerInfo
     | Publish
     | InputText String
     | SendRequest
@@ -70,120 +120,128 @@ type Msg
     | HandleRequest Nats.Protocol.Message
 
 
-receiveResponse : Result Timeout Nats.Protocol.Message -> Msg
+receiveResponse : Result Timeout String -> Msg
 receiveResponse result =
     case result of
         Ok message ->
-            ReceiveResponse message.data
+            ReceiveResponse message
 
         Err _ ->
             RequestError
 
 
-handleNatsSideEffects : List (Nats.SideEffect Msg) -> Model -> ( Model, Cmd Msg )
-handleNatsSideEffects =
-    Nats.handleNatsSideEffects
-        { update = update
-        , tagger = NatsMsg
-        , natsSend = natsSend
-        }
+natsSubscriptions : Model -> Nats.Sub.Sub Msg
+natsSubscriptions model =
+    Nats.Sub.batch
+    [
+    SubComp.natsSubscriptions model.subcomp
+        |> Nats.Sub.map SubCompMsg
+        , Nats.groupSubscribe "say.hello.to.me" "server" HandleRequest
+        ]
 
 
-mergeNats : ( Model, NatsCmd.Cmd Msg, Cmd Msg ) -> ( Model, Cmd Msg )
-mergeNats ( model, natsCmd, cmd ) =
+updateWrapper : Msg -> Model -> ( Model, Cmd Msg )
+updateWrapper msg model =
     let
-        ( natsState, sideEffects ) =
-            Nats.merge model.nats (natsSubscriptions model) natsCmd
+        ( model1, natsEffect, cmd ) =
+            update msg model
+
+        ( model2, natsCmd ) =
+            applyNatsEffect natsEffect model1
     in
-    handleNatsSideEffects sideEffects
-        { model
-            | nats = natsState
-        }
-        |> addCmd cmd
+    ( model2, Cmd.batch [ cmd, natsCmd ] )
 
 
-update : Msg -> Model -> ( Model, Cmd Msg )
+update : Msg -> Model -> ( Model, Nats.Effect Msg, Cmd Msg )
 update msg model =
-    mergeNats
-        (case msg of
-            NatsMsg natsMsg ->
-                let
-                    ( nats, sideEffects ) =
-                        Nats.update natsMsg model.nats
+    case msg of
+        NatsMsg natsMsg ->
+            let
+                ( nats, natsCmd ) =
+                    Nats.update natsConfig natsMsg model.nats
+            in
+            ( { model | nats = nats }
+            , Nats.none
+            , natsCmd
+            )
 
-                    ( newModel, cmd ) =
-                        handleNatsSideEffects sideEffects
-                            { model
-                                | nats = nats
-                            }
-                in
-                ( newModel
-                , NatsCmd.none
-                , cmd
-                )
+        OnOpen info ->
+            ( { model
+                | serverInfo = Just info
+              }
+            , Nats.none
+            , Cmd.none
+            )
 
-            SubCompMsg subcompMsg ->
-                let
-                    ( subcomp, subcompNatsCmd, subcompCmd ) =
-                        SubComp.update subcompMsg model.subcomp
-                in
-                ( { model
-                    | subcomp = subcomp
-                  }
-                , NatsCmd.map SubCompMsg subcompNatsCmd
-                , Cmd.map SubCompMsg subcompCmd
-                )
+        SubCompMsg subcompMsg ->
+            let
+                ( subcomp, subcompNatsEffect, subcompCmd ) =
+                    SubComp.update subcompMsg model.subcomp
+            in
+            ( { model
+                | subcomp = subcomp
+              }
+            , Nats.map SubCompMsg subcompNatsEffect
+            , Cmd.map SubCompMsg subcompCmd
+            )
 
-            NatsConnect info ->
-                ( model
-                , Nats.publish "test.subject" (Debug.toString info)
-                , Cmd.none
-                )
+        {-
+           NatsConnect info ->
+               ( model
+               , Nats.publish "test.subject" (Debug.toString info)
+               , Cmd.none
+               )
 
-            Publish ->
-                ( model
-                , Nats.publish "test.subject" "Hi"
-                , Cmd.none
-                )
+        -}
+        HandleRequest message ->
+               ( model
+               , Nats.publish message.replyTo ("Hello " ++ message.data ++ "!")
+               , Cmd.none
+               )
 
-            HandleRequest message ->
-                ( model
-                , Nats.publish message.replyTo ("Hello " ++ message.data ++ "!")
-                , Cmd.none
-                )
+        Publish ->
+            ( model
+            , Nats.publish "test.subject" "Hi"
+            , Cmd.none
+            )
 
-            InputText text ->
-                ( { model
-                    | inputText = text
-                  }
-                , NatsCmd.none
-                , Cmd.none
-                )
+        InputText text ->
+            ( { model
+                | inputText = text
+              }
+            , Nats.none
+            , Cmd.none
+            )
 
-            SendRequest ->
-                ( model
-                , Nats.request "say.hello.to.me" model.inputText receiveResponse
-                , Cmd.none
-                )
+        SendRequest ->
+           ( model
+           , Nats.request "say.hello.to.me" model.inputText receiveResponse
+           , Cmd.none
+           )
 
-            RequestError ->
-                ( { model | response = Just "Sorry, timeout error... Try again later?" }
-                , NatsCmd.none
-                , Cmd.none
-                )
+        RequestError ->
+           ( { model | response = Just "Sorry, timeout error... Try again later?" }
+           , Nats.none
+           , Cmd.none
+           )
 
-            ReceiveResponse response ->
-                ( { model | response = Just response }
-                , NatsCmd.none
-                , Cmd.none
-                )
+        ReceiveResponse response ->
+           ( { model | response = Just response }
+           , Nats.none
+           , Cmd.none
+           )
 
-            NoOp ->
-                ( model
-                , NatsCmd.none
-                , Cmd.none
-                )
-        )
+        NoOp ->
+            ( model
+            , Nats.none
+            , Cmd.none
+            )
+
+        _ ->
+            ( model
+            , Nats.none
+            , Cmd.none
+            )
 
 
 
@@ -235,7 +293,7 @@ view : Model -> Browser.Document Msg
 view model =
     let
         ready =
-            case model.nats.serverInfo of
+            case model.serverInfo of
                 Just _ ->
                     True
 
@@ -246,7 +304,7 @@ view model =
     , body =
         [ scaffolding <|
             [ [ h4 [] [ text "Here is what we know about the NATS server" ]
-              , case model.nats.serverInfo of
+              , case model.serverInfo of
                     Just info ->
                         ul []
                             [ li [] [ text ("Server ID: " ++ info.server_id) ]
@@ -305,12 +363,12 @@ view model =
 ---- PROGRAM ----
 
 
-main : Program () Model Msg
+main : Program { now : Int } Model Msg
 main =
     Browser.document
         { view = view
         , init = init
-        , update = update
+        , update = updateWrapper
         , subscriptions = subscriptions
         }
 
@@ -319,20 +377,6 @@ main =
 ---- SUBSCRIPTIONS ----
 
 
-natsSubscriptions : Model -> NatsSub.Sub Msg
-natsSubscriptions model =
-    NatsSub.batch
-        [ Nats.subscribe "say.hello.to.me" HandleRequest
-        , NatsSub.map SubCompMsg <| SubComp.natsSubscriptions model.subcomp
-        , Nats.onConnect NatsConnect
-        ]
-
-
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    Sub.batch
-        [ natsReceive Nats.receive
-        , Nats.listen
-            model.nats
-        ]
-        |> Sub.map NatsMsg
+    Nats.connect natsConfig model.nats

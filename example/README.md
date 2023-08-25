@@ -11,18 +11,16 @@ cd example
 elm-make Main.elm --output main.js --debug
 ```
 
-Install a gnatsd and a nats-websocket-gw in a go-ready environment:
+Install a nats-server in a go-ready environment:
 
 ```bash
-go get github.com/nats-io/gnatsd
-go get github.com/orus-io/nats-websocket-gw
-go install github.com/orus-io/nats-websocket-gw/cmd/nats-websocket-gw
+go install github.com/nats-io/nats-server/v2@latest
 ```
 
-Run gnatsd and nats-websocket-gw:
+Run nats-server:
 
 ```bash
-parallel -- gnatsd "nats-websocket-gw --no-origin-check"
+nats-server -c server.conf
 ```
 
 ## Run

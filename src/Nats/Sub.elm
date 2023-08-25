@@ -1,6 +1,6 @@
 module Nats.Sub exposing
     ( Sub(..), map, batch, none
-    , tag
+    , tag, socket
     )
 
 {-| Nats Subscription types
@@ -8,6 +8,8 @@ module Nats.Sub exposing
 This module mimics Platform.Sub, but for Nats subscriptions
 
 @docs Sub, map, batch, none
+
+@docs tag, socket
 
 -}
 
@@ -19,10 +21,7 @@ import Nats.Protocol as Protocol
 back messages to me".
 -}
 type Sub msg
-    = Subscribe String String (Protocol.Message -> msg)
-    | RequestSubscribe String String (Result Timeout Protocol.Message -> msg)
-    | OnConnect (Protocol.ServerInfo -> msg)
-    | OnError (String -> msg)
+    = Subscribe { sid : Maybe String, subject : String, group : String, onMessage : Protocol.Message -> msg }
     | BatchSub (List (Sub msg))
     | None
 
@@ -59,17 +58,13 @@ batch list =
 map : (a -> msg) -> Sub a -> Sub msg
 map aToMsg sub =
     case sub of
-        Subscribe subject queueGroup tagger ->
-            Subscribe subject queueGroup <| tagger >> aToMsg
-
-        RequestSubscribe subject request tagger ->
-            RequestSubscribe subject request <| tagger >> aToMsg
-
-        OnConnect tagger ->
-            OnConnect <| tagger >> aToMsg
-
-        OnError tagger ->
-            OnError <| tagger >> aToMsg
+        Subscribe { sid, subject, group, onMessage } ->
+            Subscribe
+                { sid = sid
+                , subject = subject
+                , group = group
+                , onMessage = onMessage >> aToMsg
+                }
 
         BatchSub list ->
             BatchSub <| List.map (map aToMsg) list
@@ -100,15 +95,29 @@ Id the subject already has a tag, the two are combined with a '\_' separator
 tag : String -> Sub msg -> Sub msg
 tag atag sub =
     case sub of
-        Subscribe subject queueGroup tagger ->
-            Subscribe (tagSubject atag subject) queueGroup tagger
-
-        RequestSubscribe subject request tagger ->
-            RequestSubscribe (tagSubject atag subject) request tagger
+        Subscribe props ->
+            Subscribe props
 
         BatchSub list ->
             list
                 |> List.map (tag atag)
+                |> BatchSub
+
+        any ->
+            any
+
+
+{-| Set a different socket id on the subscription
+-}
+socket : String -> Sub msg -> Sub msg
+socket sid sub =
+    case sub of
+        Subscribe props ->
+            Subscribe { props | sid = Just sid }
+
+        BatchSub list ->
+            list
+                |> List.map (socket sid)
                 |> BatchSub
 
         any ->
