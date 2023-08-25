@@ -5,6 +5,7 @@ import Html exposing (Html, a, button, div, h1, h3, h4, img, input, label, li, p
 import Html.Attributes exposing (class, href, placeholder, src, style, type_, width)
 import Html.Events exposing (onClick, onInput)
 import Nats
+import Nats.Effect
 import Nats.Config
 import Nats.Errors exposing (Timeout)
 import Nats.PortsAPI
@@ -130,7 +131,7 @@ receiveResponse result =
             RequestError
 
 
-natsSubscriptions : Model -> Nats.Sub.Sub Msg
+natsSubscriptions : Model -> Nats.Sub Msg
 natsSubscriptions model =
     Nats.Sub.batch
     [
@@ -161,7 +162,7 @@ update msg model =
                     Nats.update natsConfig natsMsg model.nats
             in
             ( { model | nats = nats }
-            , Nats.none
+            , Nats.Effect.none
             , natsCmd
             )
 
@@ -169,7 +170,7 @@ update msg model =
             ( { model
                 | serverInfo = Just info
               }
-            , Nats.none
+            , Nats.Effect.none
             , Cmd.none
             )
 
@@ -181,7 +182,7 @@ update msg model =
             ( { model
                 | subcomp = subcomp
               }
-            , Nats.map SubCompMsg subcompNatsEffect
+            , Nats.Effect.map SubCompMsg subcompNatsEffect
             , Cmd.map SubCompMsg subcompCmd
             )
 
@@ -209,7 +210,7 @@ update msg model =
             ( { model
                 | inputText = text
               }
-            , Nats.none
+            , Nats.Effect.none
             , Cmd.none
             )
 
@@ -221,25 +222,25 @@ update msg model =
 
         RequestError ->
            ( { model | response = Just "Sorry, timeout error... Try again later?" }
-           , Nats.none
+           , Nats.Effect.none
            , Cmd.none
            )
 
         ReceiveResponse response ->
            ( { model | response = Just response }
-           , Nats.none
+           , Nats.Effect.none
            , Cmd.none
            )
 
         NoOp ->
             ( model
-            , Nats.none
+            , Nats.Effect.none
             , Cmd.none
             )
 
         _ ->
             ( model
-            , Nats.none
+            , Nats.Effect.none
             , Cmd.none
             )
 

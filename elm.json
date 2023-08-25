@@ -1,15 +1,18 @@
 {
   "type": "package",
-  "name": "elm/nats",
+  "name": "orus-io/elm-nats",
   "summary": "Pure Elm state manager for NATS protocol",
   "license": "MIT",
   "version": "1.0.0",
   "exposed-modules": [
     "Nats",
-    "Nats.Cmd",
+    "Nats.Effect",
     "Nats.Sub",
     "Nats.Protocol",
-    "Nats.Errors"
+    "Nats.Errors",
+    "Nats.Socket",
+    "Nats.Config",
+    "Nats.PortsAPI"
   ],
   "elm-version": "0.19.0 <= v < 0.20.0",
   "dependencies": {

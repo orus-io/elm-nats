@@ -7,6 +7,8 @@ module Nats.Protocol exposing
 
 @docs Operation, Message, ServerInfo, ConnectOptions, parseOperation, toString
 
+@docs OperationResult, PartialOperation
+
 -}
 
 import Json.Decode as JsonD
@@ -184,10 +186,14 @@ isComplete partial =
     String.length partial.data == partial.size
 
 
-type alias PartialOperation =
-    PartialMessage
+{-| A temporary state when a parsing an operation is incomplete
+-}
+type PartialOperation
+    = PartialOperation PartialMessage
 
 
+{-| The result of parsing an operation
+-}
 type OperationResult
     = Operation Operation
     | Partial PartialOperation
@@ -199,7 +205,7 @@ type OperationResult
 parseOperation : String -> Maybe PartialOperation -> OperationResult
 parseOperation str partialOp =
     case partialOp of
-        Just partial ->
+        Just (PartialOperation partial) ->
             let
                 msg =
                     { partial | data = String.append partial.data str }
@@ -208,7 +214,7 @@ parseOperation str partialOp =
                 Operation <| MSG partial.sid <| toMessage partial
 
             else
-                Partial msg
+                Partial <| PartialOperation msg
 
         Nothing ->
             let
@@ -253,7 +259,7 @@ parseOperation str partialOp =
                                             }
 
                                 else
-                                    Partial partial
+                                    Partial <| PartialOperation partial
 
                             Result.Err err ->
                                 Error err

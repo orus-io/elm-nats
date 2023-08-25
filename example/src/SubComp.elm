@@ -5,6 +5,7 @@ import Html.Attributes exposing (class, src, style, width)
 import Html.Events exposing (onClick)
 import Nats
 import Nats.Protocol exposing (Message)
+import Nats.Effect
 import Nats.Sub
 
 
@@ -32,7 +33,7 @@ receive n natsMessage =
     Receive n natsMessage.data
 
 
-natsSubscriptions : Model -> Nats.Sub.Sub Msg
+natsSubscriptions : Model -> Nats.Sub Msg
 natsSubscriptions model =
     List.range 0 (model.subCounter - 1)
         |> List.map (\n -> receive n |> Nats.subscribe "test.subject")
@@ -46,7 +47,7 @@ update msg model =
             ( { model
                 | subCounter = model.subCounter + 1
               }
-            , Nats.none
+            , Nats.Effect.none
             , Cmd.none
             )
 
@@ -59,7 +60,7 @@ update msg model =
                     else
                         0
               }
-            , Nats.none
+            , Nats.Effect.none
             , Cmd.none
             )
 
@@ -67,7 +68,7 @@ update msg model =
             ( { model
                 | received = (String.fromInt n ++ ": " ++ data) :: model.received
               }
-            , Nats.none
+            , Nats.Effect.none
             , Cmd.none
             )
 

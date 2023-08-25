@@ -1,5 +1,5 @@
 module Nats.Sub exposing
-    ( Sub(..), map, batch, none
+    ( map, batch, none
     , tag, socket
     )
 
@@ -7,23 +7,17 @@ module Nats.Sub exposing
 
 This module mimics Platform.Sub, but for Nats subscriptions
 
-@docs Sub, map, batch, none
+@docs map, batch, none
 
 @docs tag, socket
 
 -}
 
+import Nats exposing (Sub)
+import Nats.Internal.Types as Types
 import Nats.Errors exposing (Timeout)
 import Nats.Protocol as Protocol
 
-
-{-| A way of telling Nats : "Please subscribe to this subject and send
-back messages to me".
--}
-type Sub msg
-    = Subscribe { sid : Maybe String, subject : String, group : String, onMessage : Protocol.Message -> msg }
-    | BatchSub (List (Sub msg))
-    | None
 
 
 {-| Batch several subscriptions
@@ -34,7 +28,7 @@ batch list =
         List.filter
             (\v ->
                 case v of
-                    None ->
+                    Types.NoSub ->
                         False
 
                     _ ->
@@ -43,14 +37,14 @@ batch list =
             list
     of
         [] ->
-            None
+            Types.NoSub
 
         l ->
             if 1 == List.length l then
                 Maybe.withDefault none <| List.head l
 
             else
-                BatchSub l
+                Types.BatchSub l
 
 
 {-| Map a Sub a to a Sub msg
@@ -58,19 +52,19 @@ batch list =
 map : (a -> msg) -> Sub a -> Sub msg
 map aToMsg sub =
     case sub of
-        Subscribe { sid, subject, group, onMessage } ->
-            Subscribe
+        Types.Subscribe { sid, subject, group, onMessage } ->
+            Types.Subscribe
                 { sid = sid
                 , subject = subject
                 , group = group
                 , onMessage = onMessage >> aToMsg
                 }
 
-        BatchSub list ->
-            BatchSub <| List.map (map aToMsg) list
+        Types.BatchSub list ->
+            Types.BatchSub <| List.map (map aToMsg) list
 
-        None ->
-            None
+        Types.NoSub ->
+            Types.NoSub
 
 
 tagSubject : String -> String -> String
@@ -95,13 +89,13 @@ Id the subject already has a tag, the two are combined with a '\_' separator
 tag : String -> Sub msg -> Sub msg
 tag atag sub =
     case sub of
-        Subscribe props ->
-            Subscribe props
+        Types.Subscribe props ->
+            Types.Subscribe props
 
-        BatchSub list ->
+        Types.BatchSub list ->
             list
                 |> List.map (tag atag)
-                |> BatchSub
+                |> Types.BatchSub
 
         any ->
             any
@@ -112,13 +106,13 @@ tag atag sub =
 socket : String -> Sub msg -> Sub msg
 socket sid sub =
     case sub of
-        Subscribe props ->
-            Subscribe { props | sid = Just sid }
+        Types.Subscribe props ->
+            Types.Subscribe { props | sid = Just sid }
 
-        BatchSub list ->
+        Types.BatchSub list ->
             list
                 |> List.map (socket sid)
-                |> BatchSub
+                |> Types.BatchSub
 
         any ->
             any
@@ -128,4 +122,4 @@ socket sid sub =
 -}
 none : Sub msg
 none =
-    None
+    Types.NoSub
