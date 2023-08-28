@@ -548,6 +548,7 @@ doSend cfg message =
 {-| Create a request
 
 The timeout is 5s by default
+
 -}
 request : String -> String -> (Result Timeout String -> msg) -> Effect msg
 request =

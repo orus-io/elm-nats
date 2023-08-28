@@ -14,10 +14,9 @@ This module mimics Platform.Sub, but for Nats subscriptions
 -}
 
 import Nats exposing (Sub)
-import Nats.Internal.Types as Types
 import Nats.Errors exposing (Timeout)
+import Nats.Internal.Types as Types
 import Nats.Protocol as Protocol
-
 
 
 {-| Batch several subscriptions
