@@ -81,13 +81,14 @@ type alias Msg msg =
 
 {-| The nats internal state
 -}
-type alias State msg =
-    { sockets : Dict String (SocketState msg)
-    , defaultSocket : Maybe String
-    , nuid : Nuid
-    , inboxPrefix : String
-    , time : Int -- store the time in ms to make deadline calcs simpler
-    }
+type State msg
+    = State
+        { sockets : Dict String (SocketState msg)
+        , defaultSocket : Maybe String
+        , nuid : Nuid
+        , inboxPrefix : String
+        , time : Int -- store the time in ms to make deadline calcs simpler
+        }
 
 
 {-| Open a new socket
@@ -107,7 +108,7 @@ close =
 {-| Connect the nats internal state to the ports
 -}
 connect : Config msg -> State msg -> Platform.Sub.Sub msg
-connect cfg state =
+connect cfg _ =
     Sub.batch
         [ cfg.ports.onOpen Types.OnOpen
         , cfg.ports.onClose Types.OnClose
@@ -127,12 +128,13 @@ init seed now =
             Nuid.new seed
                 |> Nuid.next
     in
-    { sockets = Dict.empty
-    , defaultSocket = Nothing
-    , nuid = nuid
-    , inboxPrefix = inboxPrefix ++ "."
-    , time = Time.posixToMillis now
-    }
+    State
+        { sockets = Dict.empty
+        , defaultSocket = Nothing
+        , nuid = nuid
+        , inboxPrefix = inboxPrefix ++ "."
+        , time = Time.posixToMillis now
+        }
 
 
 {-| -}
@@ -157,45 +159,48 @@ updateSocket :
     -> (SocketState msg -> ( Maybe (SocketState msg), List msg, Cmd (Msg msg) ))
     -> State msg
     -> ( State msg, List msg, Cmd (Msg msg) )
-updateSocket cfg sid fn state =
+updateSocket _ sid fn ((State state) as oState) =
     case Dict.get sid state.sockets of
         Nothing ->
-            ( state, [], Cmd.none )
+            ( oState, [], Cmd.none )
 
         Just socket ->
             case fn socket of
                 ( Nothing, msgs, cmd ) ->
-                    ( { state
-                        | sockets = Dict.remove sid state.sockets
-                      }
+                    ( State
+                        { state
+                            | sockets = Dict.remove sid state.sockets
+                        }
                     , msgs
                     , cmd
                     )
 
                 ( Just newSocket, msgs, cmd ) ->
-                    ( { state
-                        | sockets = Dict.insert sid newSocket state.sockets
-                      }
+                    ( State
+                        { state
+                            | sockets = Dict.insert sid newSocket state.sockets
+                        }
                     , msgs
                     , cmd
                     )
 
 
 updateWithEffects : Config msg -> Msg msg -> State msg -> ( State msg, List msg, Cmd (Msg msg) )
-updateWithEffects cfg msg state =
+updateWithEffects cfg msg ((State state) as oState) =
     case msg of
         Types.OnOpen sid ->
-            ( { state
-                | sockets =
-                    state.sockets
-                        |> Dict.update sid (Maybe.map (SocketState.setStatus Socket.Opened))
-              }
+            ( State
+                { state
+                    | sockets =
+                        state.sockets
+                            |> Dict.update sid (Maybe.map (SocketState.setStatus Socket.Opened))
+                }
             , []
             , Cmd.none
             )
 
         Types.OnClose sid ->
-            state
+            oState
                 |> updateSocket cfg
                     sid
                     (\socket ->
@@ -214,7 +219,7 @@ updateWithEffects cfg msg state =
                     )
 
         Types.OnError { sid, message } ->
-            state
+            oState
                 |> updateSocket cfg
                     sid
                     (\socket ->
@@ -230,7 +235,7 @@ updateWithEffects cfg msg state =
         Types.OnMessage { sid, message } ->
             case Dict.get sid state.sockets of
                 Nothing ->
-                    ( state, [], Cmd.none )
+                    ( oState, [], Cmd.none )
 
                 Just socket ->
                     let
@@ -241,11 +246,12 @@ updateWithEffects cfg msg state =
                                 )
                                 socket
                     in
-                    ( { state
-                        | sockets =
-                            state.sockets
-                                |> Dict.insert sid socketN
-                      }
+                    ( State
+                        { state
+                            | sockets =
+                                state.sockets
+                                    |> Dict.insert sid socketN
+                        }
                     , msgs
                     , operations
                         |> List.map
@@ -276,43 +282,45 @@ updateWithEffects cfg msg state =
                             )
                             ( Dict.empty, [] )
             in
-            ( { state
-                | time = msTime
-                , sockets = sockets
-              }
+            ( State
+                { state
+                    | time = msTime
+                    , sockets = sockets
+                }
             , msgs
             , Cmd.none
             )
 
 
 nextInbox : State msg -> ( String, State msg )
-nextInbox state =
+nextInbox (State state) =
     let
         ( postfix, nuid ) =
             Nuid.next state.nuid
     in
-    ( state.inboxPrefix ++ postfix, { state | nuid = nuid } )
+    ( state.inboxPrefix ++ postfix, State { state | nuid = nuid } )
 
 
 toCmd : Config msg -> Effect msg -> State msg -> ( State msg, Cmd msg )
-toCmd cfg effect state =
+toCmd cfg effect ((State state) as oState) =
     case effect of
         Open (Types.Socket skt) ->
-            ( { state
-                | sockets =
-                    Dict.insert skt.id
-                        (Types.Socket skt
-                            |> SocketState.init
-                            |> SocketState.setStatus Socket.Opening
-                        )
-                        state.sockets
-                , defaultSocket =
-                    if skt.default || state.defaultSocket == Nothing then
-                        Just skt.id
+            ( State
+                { state
+                    | sockets =
+                        Dict.insert skt.id
+                            (Types.Socket skt
+                                |> SocketState.init
+                                |> SocketState.setStatus Socket.Opening
+                            )
+                            state.sockets
+                    , defaultSocket =
+                        if skt.default || state.defaultSocket == Nothing then
+                            Just skt.id
 
-                    else
-                        state.defaultSocket
-              }
+                        else
+                            state.defaultSocket
+                }
             , cfg.ports.open ( skt.id, skt.url )
                 |> Cmd.map cfg.parentMsg
             )
@@ -320,7 +328,7 @@ toCmd cfg effect state =
         Close sid ->
             case Dict.get sid state.sockets of
                 Nothing ->
-                    ( state, Cmd.none )
+                    ( oState, Cmd.none )
 
                 Just _ ->
                     let
@@ -343,10 +351,11 @@ toCmd cfg effect state =
                                     Nothing
                                     sockets
                     in
-                    ( { state
-                        | sockets = sockets
-                        , defaultSocket = defaultSocket
-                      }
+                    ( State
+                        { state
+                            | sockets = sockets
+                            , defaultSocket = defaultSocket
+                        }
                     , Cmd.none
                     )
 
@@ -357,10 +366,10 @@ toCmd cfg effect state =
                         _ =
                             cfg.debugLog "cannot publish message" "Could not determine the sid"
                     in
-                    ( state, Cmd.none )
+                    ( oState, Cmd.none )
 
                 s ->
-                    ( state
+                    ( oState
                     , doSend cfg
                         { sid = s
                         , message =
@@ -381,12 +390,12 @@ toCmd cfg effect state =
                         _ =
                             cfg.debugLog "cannot publish message" "Could not determine the sid"
                     in
-                    ( state, Cmd.none )
+                    ( oState, Cmd.none )
 
                 s ->
                     let
                         ( inbox, state1 ) =
-                            nextInbox state
+                            nextInbox oState
 
                         ( nextState, msg, cmd ) =
                             state1
@@ -431,17 +440,17 @@ toCmd cfg effect state =
                         in
                         ( newState, newCmd :: cmd )
                     )
-                    ( state, [] )
+                    ( oState, [] )
                 |> Tuple.mapSecond Cmd.batch
 
         NoEffect ->
-            ( state, Cmd.none )
+            ( oState, Cmd.none )
 
 
 handleSub : Config msg -> Sub msg -> State msg -> ( State msg, Cmd msg )
 handleSub cfg sub state =
     let
-        ( nState, cmd ) =
+        ( State nState, cmd ) =
             handleSubHelper cfg sub state
 
         ( sockets, opsCmds ) =
@@ -468,9 +477,10 @@ handleSub cfg sub state =
                 ( Dict.empty, [] )
                 nState.sockets
     in
-    ( { nState
-        | sockets = sockets
-      }
+    ( State
+        { nState
+            | sockets = sockets
+        }
     , cmd
         :: opsCmds
         |> Cmd.batch
@@ -478,7 +488,7 @@ handleSub cfg sub state =
 
 
 handleSubHelper : Config msg -> Sub msg -> State msg -> ( State msg, Cmd msg )
-handleSubHelper cfg sub state =
+handleSubHelper cfg sub ((State state) as oState) =
     case sub of
         Types.Subscribe { sid, subject, group, onMessage } ->
             case sid |> Maybe.withDefault (state.defaultSocket |> Maybe.withDefault "") of
@@ -487,12 +497,12 @@ handleSubHelper cfg sub state =
                         _ =
                             cfg.debugLog "cannot subscribe" "Could not determine the sid"
                     in
-                    ( state, Cmd.none )
+                    ( oState, Cmd.none )
 
                 s ->
                     let
                         ( newState, _, _ ) =
-                            state
+                            oState
                                 |> updateSocket cfg
                                     s
                                     (\socket ->
@@ -514,11 +524,11 @@ handleSubHelper cfg sub state =
                         in
                         ( newState, newCmd :: cmd )
                     )
-                    ( state, [] )
+                    ( oState, [] )
                 |> Tuple.mapSecond Cmd.batch
 
         Types.NoSub ->
-            ( state, Cmd.none )
+            ( oState, Cmd.none )
 
 
 {-| Update the nats state according to all the Nats.Effect and Nats.Sub gathered
