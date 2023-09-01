@@ -10,17 +10,21 @@ module Nats.Internal.SocketState exposing
     )
 
 import Dict exposing (Dict)
+import Nats.Config exposing (Config)
 import Nats.Errors exposing (Timeout)
+import Nats.Events as Events exposing (SocketEvent)
 import Nats.Internal.Types as Types
 import Nats.Nuid as Nuid exposing (Nuid)
-import Nats.Protocol as Protocol
+import Nats.Protocol as Protocol exposing (ConnectOptions)
 import Nats.Socket as Socket
 import Time
 
 
-init : Types.Socket msg -> SocketState msg
-init (Types.Socket socket) =
+init : ConnectOptions -> (SocketEvent -> msg) -> Types.Socket -> SocketState datatype msg
+init options onEvent (Types.Socket socket) =
     { socket = socket
+    , connectOptions = options
+    , onEvent = onEvent
     , status = Socket.Undefined
     , partialOperation = Nothing
     , serverInfo = Nothing
@@ -30,26 +34,26 @@ init (Types.Socket socket) =
     }
 
 
-type SubType msg
+type SubType datatype msg
     = Closed
     | Sub
     | Req
         { deadline : Int
         , onTimeout : Time.Posix -> msg
-        , onMessage : Protocol.Message -> ( Maybe Protocol.Message, Bool )
+        , onMessage : Protocol.Message datatype -> ( Maybe (Protocol.Message datatype), Bool )
         }
 
 
-type alias Subscription msg =
+type alias Subscription datatype msg =
     { id : String
     , subject : String
     , group : String
-    , handlers : List (Protocol.Message -> msg)
-    , subType : SubType msg
+    , handlers : List (Protocol.Message datatype -> msg)
+    , subType : SubType datatype msg
     }
 
 
-isRequest : Subscription msg -> Bool
+isRequest : Subscription datatype msg -> Bool
 isRequest sub =
     case sub.subType of
         Req _ ->
@@ -59,51 +63,53 @@ isRequest sub =
             False
 
 
-type alias SocketState msg =
-    { socket : Types.SocketProps msg
+type alias SocketState datatype msg =
+    { socket : Types.SocketProps
+    , connectOptions : ConnectOptions
+    , onEvent : SocketEvent -> msg
     , status : Socket.Status
-    , partialOperation : Maybe Protocol.PartialOperation
+    , partialOperation : Maybe (Protocol.PartialOperation datatype)
     , serverInfo : Maybe Protocol.ServerInfo
     , lastSubID : Int
-    , activeSubscriptions : List (Subscription msg)
-    , nextSubscriptions : Dict ( String, String ) (Subscription msg)
+    , activeSubscriptions : List (Subscription datatype msg)
+    , nextSubscriptions : Dict ( String, String ) (Subscription datatype msg)
 
     -- , lastSeen : Maybe Time
     }
 
 
-setStatus : Socket.Status -> SocketState msg -> SocketState msg
+setStatus : Socket.Status -> SocketState datatype msg -> SocketState datatype msg
 setStatus status state =
     { state
         | status = status
     }
 
 
-getSubscriptionByID : String -> SocketState msg -> Maybe (Subscription msg)
+getSubscriptionByID : String -> SocketState datatype msg -> Maybe (Subscription datatype msg)
 getSubscriptionByID id state =
     state.activeSubscriptions
         |> List.filter (.id >> (==) id)
         |> List.head
 
 
-getSubscriptionBySubjectGroup : ( String, String ) -> SocketState msg -> Maybe (Subscription msg)
+getSubscriptionBySubjectGroup : ( String, String ) -> SocketState datatype msg -> Maybe (Subscription datatype msg)
 getSubscriptionBySubjectGroup ( subject, group ) state =
     state.activeSubscriptions
         |> List.filter (\sub -> ( sub.subject, sub.group ) == ( subject, group ))
         |> List.head
 
 
-nextID : SocketState msg -> Int
+nextID : SocketState datatype msg -> Int
 nextID state =
     state.lastSubID + 1
 
 
-addSubscription : String -> String -> (Protocol.Message -> msg) -> SocketState msg -> SocketState msg
+addSubscription : String -> String -> (Protocol.Message datatype -> msg) -> SocketState datatype msg -> SocketState datatype msg
 addSubscription =
     addSubscriptionHelper Sub
 
 
-addSubscriptionHelper : SubType msg -> String -> String -> (Protocol.Message -> msg) -> SocketState msg -> SocketState msg
+addSubscriptionHelper : SubType datatype msg -> String -> String -> (Protocol.Message datatype -> msg) -> SocketState datatype msg -> SocketState datatype msg
 addSubscriptionHelper subType subject group onMessage state =
     case Dict.get ( subject, group ) state.nextSubscriptions of
         Just sub ->
@@ -140,7 +146,7 @@ addSubscriptionHelper subType subject group onMessage state =
             }
 
 
-finalizeSubscriptions : SocketState msg -> ( SocketState msg, List Protocol.Operation )
+finalizeSubscriptions : SocketState datatype msg -> ( SocketState datatype msg, List (Protocol.Operation datatype) )
 finalizeSubscriptions state =
     let
         nextSubscriptions =
@@ -183,15 +189,17 @@ finalizeSubscriptions state =
 
 
 addRequest :
-    { subject : String
-    , inbox : String
-    , message : String
-    , deadline : Int
-    , onResponse : Result Timeout String -> msg
-    }
-    -> SocketState msg
-    -> ( SocketState msg, List Protocol.Operation )
-addRequest req state =
+    Config datatype msg
+    ->
+        { subject : String
+        , inbox : String
+        , message : datatype
+        , deadline : Int
+        , onResponse : Result Timeout datatype -> msg
+        }
+    -> SocketState datatype msg
+    -> ( SocketState datatype msg, List (Protocol.Operation datatype) )
+addRequest cfg req state =
     ( addSubscriptionHelper
         (Req
             { deadline = req.deadline
@@ -207,14 +215,15 @@ addRequest req state =
             { subject = req.subject
             , replyTo = req.inbox
             , data = req.message
+            , size = cfg.size req.message
             }
       ]
     )
 
 
-parse : String -> SocketState msg -> ( SocketState msg, Maybe Protocol.Operation )
-parse str state =
-    case Protocol.parseOperation str state.partialOperation of
+parse : Config datatype msg -> datatype -> SocketState datatype msg -> ( SocketState datatype msg, Maybe (Protocol.Operation datatype) )
+parse cfg data state =
+    case cfg.parse data state.partialOperation of
         Protocol.Operation op ->
             ( { state | partialOperation = Nothing }, Just op )
 
@@ -230,7 +239,7 @@ parse str state =
             )
 
 
-handleTimeouts : Int -> SocketState msg -> ( SocketState msg, List msg )
+handleTimeouts : Int -> SocketState datatype msg -> ( SocketState datatype msg, List msg )
 handleTimeouts time state =
     let
         ( subs, msgList ) =
@@ -257,11 +266,11 @@ handleTimeouts time state =
     )
 
 
-receive : String -> SocketState msg -> ( SocketState msg, List msg, List Protocol.Operation )
-receive str state =
+receive : Config datatype msg -> datatype -> SocketState datatype msg -> ( SocketState datatype msg, List msg, List (Protocol.Operation datatype) )
+receive cfg data state =
     let
         ( parseState, maybeOperation ) =
-            parse str state
+            parse cfg data state
     in
     case maybeOperation of
         Nothing ->
@@ -271,20 +280,15 @@ receive str state =
             receiveOperation op parseState
 
 
-receiveOperation : Protocol.Operation -> SocketState msg -> ( SocketState msg, List msg, List Protocol.Operation )
+receiveOperation : Protocol.Operation datatype -> SocketState datatype msg -> ( SocketState datatype msg, List msg, List (Protocol.Operation datatype) )
 receiveOperation operation state =
     case operation of
         Protocol.INFO serverInfo ->
             ( { state
                 | serverInfo = Just serverInfo
               }
-            , case state.socket.onOpen of
-                Just onOpen ->
-                    [ onOpen serverInfo ]
-
-                Nothing ->
-                    []
-            , Protocol.CONNECT state.socket.connectOptions
+            , [ Events.SocketOpen serverInfo |> state.onEvent ]
+            , Protocol.CONNECT state.connectOptions
                 :: (state.activeSubscriptions
                         |> List.map (\sub -> Protocol.SUB sub.subject sub.group sub.id)
                    )

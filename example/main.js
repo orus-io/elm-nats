@@ -4955,52 +4955,6 @@ function _Browser_load(url)
 }
 
 
-
-function _Time_now(millisToPosix)
-{
-	return _Scheduler_binding(function(callback)
-	{
-		callback(_Scheduler_succeed(millisToPosix(Date.now())));
-	});
-}
-
-var _Time_setInterval = F2(function(interval, task)
-{
-	return _Scheduler_binding(function(callback)
-	{
-		var id = setInterval(function() { _Scheduler_rawSpawn(task); }, interval);
-		return function() { clearInterval(id); };
-	});
-});
-
-function _Time_here()
-{
-	return _Scheduler_binding(function(callback)
-	{
-		callback(_Scheduler_succeed(
-			A2($elm$time$Time$customZone, -(new Date().getTimezoneOffset()), _List_Nil)
-		));
-	});
-}
-
-
-function _Time_getZoneName()
-{
-	return _Scheduler_binding(function(callback)
-	{
-		try
-		{
-			var name = $elm$time$Time$Name(Intl.DateTimeFormat().resolvedOptions().timeZone);
-		}
-		catch (e)
-		{
-			var name = $elm$time$Time$Offset(new Date().getTimezoneOffset());
-		}
-		callback(_Scheduler_succeed(name));
-	});
-}
-
-
 // CREATE
 
 var _Regex_never = /.^/;
@@ -5100,6 +5054,52 @@ var _Regex_splitAtMost = F3(function(n, re, str)
 });
 
 var _Regex_infinity = Infinity;
+
+
+
+function _Time_now(millisToPosix)
+{
+	return _Scheduler_binding(function(callback)
+	{
+		callback(_Scheduler_succeed(millisToPosix(Date.now())));
+	});
+}
+
+var _Time_setInterval = F2(function(interval, task)
+{
+	return _Scheduler_binding(function(callback)
+	{
+		var id = setInterval(function() { _Scheduler_rawSpawn(task); }, interval);
+		return function() { clearInterval(id); };
+	});
+});
+
+function _Time_here()
+{
+	return _Scheduler_binding(function(callback)
+	{
+		callback(_Scheduler_succeed(
+			A2($elm$time$Time$customZone, -(new Date().getTimezoneOffset()), _List_Nil)
+		));
+	});
+}
+
+
+function _Time_getZoneName()
+{
+	return _Scheduler_binding(function(callback)
+	{
+		try
+		{
+			var name = $elm$time$Time$Name(Intl.DateTimeFormat().resolvedOptions().timeZone);
+		}
+		catch (e)
+		{
+			var name = $elm$time$Time$Offset(new Date().getTimezoneOffset());
+		}
+		callback(_Scheduler_succeed(name));
+	});
+}
 var $elm$core$List$cons = _List_cons;
 var $elm$core$Elm$JsArray$foldr = _JsArray_foldr;
 var $elm$core$Array$foldr = F3(
@@ -10702,996 +10702,22 @@ var $elm$core$Basics$never = function (_v0) {
 	}
 };
 var $elm$browser$Browser$document = _Browser_document;
-var $author$project$Main$OnOpen = function (a) {
-	return {$: 'OnOpen', a: a};
+var $author$project$Nats$State = function (a) {
+	return {$: 'State', a: a};
 };
-var $author$project$Nats$doSend = F2(
-	function (cfg, message) {
-		var _v0 = A2(cfg.debugLog, 'sending to ' + message.sid, message.message);
-		return cfg.ports.send(message);
-	});
-var $author$project$Nats$Protocol$SUB = F3(
-	function (a, b, c) {
-		return {$: 'SUB', a: a, b: b, c: c};
-	});
-var $author$project$Nats$Protocol$UNSUB = F2(
-	function (a, b) {
-		return {$: 'UNSUB', a: a, b: b};
-	});
-var $elm$core$Dict$filter = F2(
-	function (isGood, dict) {
-		return A3(
-			$elm$core$Dict$foldl,
-			F3(
-				function (k, v, d) {
-					return A2(isGood, k, v) ? A3($elm$core$Dict$insert, k, v, d) : d;
-				}),
-			$elm$core$Dict$empty,
-			dict);
-	});
-var $elm$core$List$filter = F2(
-	function (isGood, list) {
-		return A3(
-			$elm$core$List$foldr,
-			F2(
-				function (x, xs) {
-					return isGood(x) ? A2($elm$core$List$cons, x, xs) : xs;
-				}),
-			_List_Nil,
-			list);
-	});
-var $elm$core$List$head = function (list) {
-	if (list.b) {
-		var x = list.a;
-		var xs = list.b;
-		return $elm$core$Maybe$Just(x);
-	} else {
-		return $elm$core$Maybe$Nothing;
-	}
+var $author$project$Nats$Internal$SocketStateCollection$SocketStateCollection = function (a) {
+	return {$: 'SocketStateCollection', a: a};
 };
-var $author$project$Nats$Internal$SocketState$getSubscriptionByID = F2(
-	function (id, state) {
-		return $elm$core$List$head(
-			A2(
-				$elm$core$List$filter,
-				A2(
-					$elm$core$Basics$composeR,
-					function ($) {
-						return $.id;
-					},
-					$elm$core$Basics$eq(id)),
-				state.activeSubscriptions));
-	});
-var $author$project$Nats$Internal$SocketState$isRequest = function (sub) {
-	var _v0 = sub.subType;
-	if (_v0.$ === 'Req') {
-		return true;
-	} else {
-		return false;
-	}
-};
-var $author$project$Nats$Internal$SocketState$finalizeSubscriptions = function (state) {
-	var nextSubscriptions = $elm$core$Dict$values(state.nextSubscriptions);
-	return _Utils_Tuple2(
-		_Utils_update(
-			state,
-			{
-				activeSubscriptions: nextSubscriptions,
-				nextSubscriptions: A2(
-					$elm$core$Dict$filter,
-					function (_v0) {
-						return $author$project$Nats$Internal$SocketState$isRequest;
-					},
-					state.nextSubscriptions)
-			}),
-		_Utils_ap(
-			A2(
-				$elm$core$List$filterMap,
-				function (sub) {
-					var _v1 = A2($author$project$Nats$Internal$SocketState$getSubscriptionByID, sub.id, state);
-					if (_v1.$ === 'Nothing') {
-						return $elm$core$Maybe$Just(
-							A3($author$project$Nats$Protocol$SUB, sub.subject, sub.group, sub.id));
-					} else {
-						return $elm$core$Maybe$Nothing;
-					}
-				},
-				nextSubscriptions),
-			A2(
-				$elm$core$List$filterMap,
-				function (sub) {
-					var _v2 = $elm$core$List$head(
-						A2(
-							$elm$core$List$filter,
-							function (next) {
-								return _Utils_eq(next.id, sub.id);
-							},
-							nextSubscriptions));
-					if (_v2.$ === 'Nothing') {
-						return $elm$core$Maybe$Just(
-							A2($author$project$Nats$Protocol$UNSUB, sub.id, 0));
-					} else {
-						return $elm$core$Maybe$Nothing;
-					}
-				},
-				state.activeSubscriptions)));
-};
-var $author$project$Nats$Internal$SocketState$Sub = {$: 'Sub'};
-var $author$project$Nats$Internal$SocketState$getSubscriptionBySubjectGroup = F2(
-	function (_v0, state) {
-		var subject = _v0.a;
-		var group = _v0.b;
-		return $elm$core$List$head(
-			A2(
-				$elm$core$List$filter,
-				function (sub) {
-					return _Utils_eq(
-						_Utils_Tuple2(sub.subject, sub.group),
-						_Utils_Tuple2(subject, group));
-				},
-				state.activeSubscriptions));
-	});
-var $author$project$Nats$Internal$SocketState$nextID = function (state) {
-	return state.lastSubID + 1;
-};
-var $author$project$Nats$Internal$SocketState$addSubscriptionHelper = F5(
-	function (subType, subject, group, onMessage, state) {
-		var _v0 = A2(
-			$elm$core$Dict$get,
-			_Utils_Tuple2(subject, group),
-			state.nextSubscriptions);
-		if (_v0.$ === 'Just') {
-			var sub = _v0.a;
-			return _Utils_update(
-				state,
-				{
-					nextSubscriptions: A3(
-						$elm$core$Dict$insert,
-						_Utils_Tuple2(subject, group),
-						_Utils_update(
-							sub,
-							{
-								handlers: A2($elm$core$List$cons, onMessage, sub.handlers)
-							}),
-						state.nextSubscriptions)
-				});
-		} else {
-			var _v1 = function () {
-				var _v2 = A2(
-					$author$project$Nats$Internal$SocketState$getSubscriptionBySubjectGroup,
-					_Utils_Tuple2(subject, group),
-					state);
-				if (_v2.$ === 'Just') {
-					var sub = _v2.a;
-					return _Utils_Tuple2(sub.id, state.lastSubID);
-				} else {
-					return _Utils_Tuple2(
-						$elm$core$String$fromInt(
-							$author$project$Nats$Internal$SocketState$nextID(state)),
-						$author$project$Nats$Internal$SocketState$nextID(state));
-				}
-			}();
-			var subID = _v1.a;
-			var lastSubID = _v1.b;
-			return _Utils_update(
-				state,
-				{
-					lastSubID: lastSubID,
-					nextSubscriptions: A3(
-						$elm$core$Dict$insert,
-						_Utils_Tuple2(subject, group),
-						{
-							group: group,
-							handlers: _List_fromArray(
-								[onMessage]),
-							id: subID,
-							subType: subType,
-							subject: subject
-						},
-						state.nextSubscriptions)
-				});
-		}
-	});
-var $author$project$Nats$Internal$SocketState$addSubscription = $author$project$Nats$Internal$SocketState$addSubscriptionHelper($author$project$Nats$Internal$SocketState$Sub);
-var $elm$core$Tuple$mapSecond = F2(
-	function (func, _v0) {
-		var x = _v0.a;
-		var y = _v0.b;
-		return _Utils_Tuple2(
-			x,
-			func(y));
-	});
-var $author$project$Nats$updateSocket = F4(
-	function (cfg, sid, fn, state) {
-		var _v0 = A2($elm$core$Dict$get, sid, state.sockets);
-		if (_v0.$ === 'Nothing') {
-			return _Utils_Tuple3(state, _List_Nil, $elm$core$Platform$Cmd$none);
-		} else {
-			var socket = _v0.a;
-			var _v1 = fn(socket);
-			if (_v1.a.$ === 'Nothing') {
-				var _v2 = _v1.a;
-				var msgs = _v1.b;
-				var cmd = _v1.c;
-				return _Utils_Tuple3(
-					_Utils_update(
-						state,
-						{
-							sockets: A2($elm$core$Dict$remove, sid, state.sockets)
-						}),
-					msgs,
-					cmd);
-			} else {
-				var newSocket = _v1.a.a;
-				var msgs = _v1.b;
-				var cmd = _v1.c;
-				return _Utils_Tuple3(
-					_Utils_update(
-						state,
-						{
-							sockets: A3($elm$core$Dict$insert, sid, newSocket, state.sockets)
-						}),
-					msgs,
-					cmd);
-			}
-		}
-	});
-var $author$project$Nats$handleSubHelper = F3(
-	function (cfg, sub, state) {
-		switch (sub.$) {
-			case 'Subscribe':
-				var sid = sub.a.sid;
-				var subject = sub.a.subject;
-				var group = sub.a.group;
-				var onMessage = sub.a.onMessage;
-				var _v1 = A2(
-					$elm$core$Maybe$withDefault,
-					A2($elm$core$Maybe$withDefault, '', state.defaultSocket),
-					sid);
-				if (_v1 === '') {
-					var _v2 = A2(cfg.debugLog, 'cannot subscribe', 'Could not determine the sid');
-					return _Utils_Tuple2(state, $elm$core$Platform$Cmd$none);
-				} else {
-					var s = _v1;
-					var _v3 = A4(
-						$author$project$Nats$updateSocket,
-						cfg,
-						s,
-						function (socket) {
-							return _Utils_Tuple3(
-								$elm$core$Maybe$Just(
-									A4($author$project$Nats$Internal$SocketState$addSubscription, subject, group, onMessage, socket)),
-								_List_Nil,
-								$elm$core$Platform$Cmd$none);
-						},
-						state);
-					var newState = _v3.a;
-					return _Utils_Tuple2(newState, $elm$core$Platform$Cmd$none);
-				}
-			case 'BatchSub':
-				var list = sub.a;
-				return A2(
-					$elm$core$Tuple$mapSecond,
-					$elm$core$Platform$Cmd$batch,
-					A3(
-						$elm$core$List$foldl,
-						F2(
-							function (innerSub, _v4) {
-								var st = _v4.a;
-								var cmd = _v4.b;
-								var _v5 = A3($author$project$Nats$handleSubHelper, cfg, innerSub, st);
-								var newState = _v5.a;
-								var newCmd = _v5.b;
-								return _Utils_Tuple2(
-									newState,
-									A2($elm$core$List$cons, newCmd, cmd));
-							}),
-						_Utils_Tuple2(state, _List_Nil),
-						list));
-			default:
-				return _Utils_Tuple2(state, $elm$core$Platform$Cmd$none);
-		}
-	});
-var $elm$core$String$append = _String_append;
-var $elm$json$Json$Encode$bool = _Json_wrap;
-var $elm$json$Json$Encode$int = _Json_wrap;
-var $author$project$Nats$Protocol$toString = function (op) {
-	return function () {
-		switch (op.$) {
-			case 'INFO':
-				return '';
-			case 'CONNECT':
-				var options = op.a;
-				return A2(
-					$elm$core$String$append,
-					'CONNECT ',
-					A2(
-						$elm$json$Json$Encode$encode,
-						0,
-						$elm$json$Json$Encode$object(
-							_Utils_ap(
-								_List_fromArray(
-									[
-										_Utils_Tuple2(
-										'verbose',
-										$elm$json$Json$Encode$bool(options.verbose)),
-										_Utils_Tuple2(
-										'pedantic',
-										$elm$json$Json$Encode$bool(options.pedantic)),
-										_Utils_Tuple2(
-										'lang',
-										$elm$json$Json$Encode$string(options.lang)),
-										_Utils_Tuple2(
-										'version',
-										$elm$json$Json$Encode$string(options.version)),
-										_Utils_Tuple2(
-										'protocol',
-										$elm$json$Json$Encode$int(options.protocol))
-									]),
-								_Utils_ap(
-									function () {
-										var _v1 = options.auth_token;
-										if (_v1.$ === 'Just') {
-											var auth_token = _v1.a;
-											return _List_fromArray(
-												[
-													_Utils_Tuple2(
-													'auth_token',
-													$elm$json$Json$Encode$string(auth_token))
-												]);
-										} else {
-											return _List_Nil;
-										}
-									}(),
-									_Utils_ap(
-										function () {
-											var _v2 = options.user;
-											if (_v2.$ === 'Just') {
-												var user = _v2.a;
-												return _List_fromArray(
-													[
-														_Utils_Tuple2(
-														'user',
-														$elm$json$Json$Encode$string(user))
-													]);
-											} else {
-												return _List_Nil;
-											}
-										}(),
-										_Utils_ap(
-											function () {
-												var _v3 = options.pass;
-												if (_v3.$ === 'Just') {
-													var pass = _v3.a;
-													return _List_fromArray(
-														[
-															_Utils_Tuple2(
-															'pass',
-															$elm$json$Json$Encode$string(pass))
-														]);
-												} else {
-													return _List_Nil;
-												}
-											}(),
-											function () {
-												var _v4 = options.name;
-												if (_v4.$ === 'Just') {
-													var name = _v4.a;
-													return _List_fromArray(
-														[
-															_Utils_Tuple2(
-															'name',
-															$elm$json$Json$Encode$string(name))
-														]);
-												} else {
-													return _List_Nil;
-												}
-											}())))))));
-			case 'MSG':
-				var sid = op.a;
-				var message = op.b;
-				return '';
-			case 'PING':
-				return 'PING';
-			case 'PONG':
-				return 'PONG';
-			case 'PUB':
-				var message = op.a;
-				return 'PUB ' + (message.subject + (((!$elm$core$String$isEmpty(message.replyTo)) ? (' ' + message.replyTo) : '') + (' ' + ($elm$core$String$fromInt(
-					$elm$core$String$length(message.data)) + ('\u000D\n' + message.data)))));
-			case 'SUB':
-				var subject = op.a;
-				var queueGroup = op.b;
-				var sid = op.c;
-				return 'SUB ' + (subject + (' ' + (((!$elm$core$String$isEmpty(queueGroup)) ? (queueGroup + ' ') : '') + sid)));
-			case 'UNSUB':
-				var sid = op.a;
-				var maxMsgs = op.b;
-				return 'UNSUB ' + (sid + ((!(!maxMsgs)) ? (' ' + $elm$core$String$fromInt(maxMsgs)) : ''));
-			case 'OK':
-				return 'OK';
-			default:
-				var err = op.a;
-				return 'ERR \'' + (err + '\'');
-		}
-	}() + '\u000D\n';
-};
-var $author$project$Nats$handleSub = F3(
-	function (cfg, sub, state) {
-		var _v0 = A3($author$project$Nats$handleSubHelper, cfg, sub, state);
-		var nState = _v0.a;
-		var cmd = _v0.b;
-		var _v1 = A3(
-			$elm$core$Dict$foldl,
-			F3(
-				function (sid, socket, _v2) {
-					var newSockets = _v2.a;
-					var cmds = _v2.b;
-					var _v3 = $author$project$Nats$Internal$SocketState$finalizeSubscriptions(socket);
-					var nextSocket = _v3.a;
-					var nextOps = _v3.b;
-					var nextCmd = A2(
-						$elm$core$List$map,
-						function (op) {
-							return A2(
-								$elm$core$Platform$Cmd$map,
-								cfg.parentMsg,
-								A2(
-									$author$project$Nats$doSend,
-									cfg,
-									{
-										message: $author$project$Nats$Protocol$toString(op),
-										sid: sid
-									}));
-						},
-						nextOps);
-					return _Utils_Tuple2(
-						A3($elm$core$Dict$insert, sid, nextSocket, newSockets),
-						A2($elm$core$List$append, nextCmd, cmds));
-				}),
-			_Utils_Tuple2($elm$core$Dict$empty, _List_Nil),
-			nState.sockets);
-		var sockets = _v1.a;
-		var opsCmds = _v1.b;
-		return _Utils_Tuple2(
-			_Utils_update(
-				nState,
-				{sockets: sockets}),
-			$elm$core$Platform$Cmd$batch(
-				A2($elm$core$List$cons, cmd, opsCmds)));
-	});
-var $author$project$Nats$Socket$Opening = {$: 'Opening'};
-var $author$project$Nats$Protocol$PUB = function (a) {
-	return {$: 'PUB', a: a};
-};
-var $author$project$Nats$Internal$Types$Socket = function (a) {
-	return {$: 'Socket', a: a};
-};
-var $author$project$Nats$Internal$SocketState$Req = function (a) {
-	return {$: 'Req', a: a};
-};
-var $author$project$Nats$Internal$SocketState$addRequest = F2(
-	function (req, state) {
-		return _Utils_Tuple2(
-			A5(
-				$author$project$Nats$Internal$SocketState$addSubscriptionHelper,
-				$author$project$Nats$Internal$SocketState$Req(
-					{
-						deadline: req.deadline,
-						onMessage: function (m) {
-							return _Utils_Tuple2(
-								$elm$core$Maybe$Just(m),
-								false);
-						},
-						onTimeout: A2($elm$core$Basics$composeR, $elm$core$Result$Err, req.onResponse)
-					}),
-				req.inbox,
-				'',
-				A2(
-					$elm$core$Basics$composeR,
-					function ($) {
-						return $.data;
-					},
-					A2($elm$core$Basics$composeR, $elm$core$Result$Ok, req.onResponse)),
-				state),
-			_List_fromArray(
-				[
-					$author$project$Nats$Protocol$PUB(
-					{data: req.message, replyTo: req.inbox, subject: req.subject})
-				]));
-	});
-var $author$project$Nats$Socket$Undefined = {$: 'Undefined'};
-var $author$project$Nats$Internal$SocketState$init = function (_v0) {
-	var socket = _v0.a;
-	return {activeSubscriptions: _List_Nil, lastSubID: 0, nextSubscriptions: $elm$core$Dict$empty, partialOperation: $elm$core$Maybe$Nothing, serverInfo: $elm$core$Maybe$Nothing, socket: socket, status: $author$project$Nats$Socket$Undefined};
-};
+var $author$project$Nats$Internal$SocketStateCollection$empty = $author$project$Nats$Internal$SocketStateCollection$SocketStateCollection(_List_Nil);
 var $author$project$Nats$Nuid$Nuid = F3(
 	function (a, b, c) {
 		return {$: 'Nuid', a: a, b: b, c: c};
 	});
-var $elm$random$Random$step = F2(
-	function (_v0, seed) {
-		var generator = _v0.a;
-		return generator(seed);
-	});
-var $elm$core$String$fromList = _String_fromList;
-var $elm$random$Random$Generator = function (a) {
-	return {$: 'Generator', a: a};
-};
-var $elm$random$Random$listHelp = F4(
-	function (revList, n, gen, seed) {
-		listHelp:
-		while (true) {
-			if (n < 1) {
-				return _Utils_Tuple2(revList, seed);
-			} else {
-				var _v0 = gen(seed);
-				var value = _v0.a;
-				var newSeed = _v0.b;
-				var $temp$revList = A2($elm$core$List$cons, value, revList),
-					$temp$n = n - 1,
-					$temp$gen = gen,
-					$temp$seed = newSeed;
-				revList = $temp$revList;
-				n = $temp$n;
-				gen = $temp$gen;
-				seed = $temp$seed;
-				continue listHelp;
-			}
-		}
-	});
-var $elm$random$Random$list = F2(
-	function (n, _v0) {
-		var gen = _v0.a;
-		return $elm$random$Random$Generator(
-			function (seed) {
-				return A4($elm$random$Random$listHelp, _List_Nil, n, gen, seed);
-			});
-	});
-var $elm$random$Random$map = F2(
-	function (func, _v0) {
-		var genA = _v0.a;
-		return $elm$random$Random$Generator(
-			function (seed0) {
-				var _v1 = genA(seed0);
-				var a = _v1.a;
-				var seed1 = _v1.b;
-				return _Utils_Tuple2(
-					func(a),
-					seed1);
-			});
-	});
-var $elm_community$random_extra$Random$String$string = F2(
-	function (stringLength, charGenerator) {
-		return A2(
-			$elm$random$Random$map,
-			$elm$core$String$fromList,
-			A2($elm$random$Random$list, stringLength, charGenerator));
-	});
-var $author$project$Nats$Nuid$next = function (_v0) {
-	var len = _v0.a;
-	var charGen = _v0.b;
-	var seed = _v0.c;
-	var _v1 = A2(
-		$elm$random$Random$step,
-		A2($elm_community$random_extra$Random$String$string, len, charGen),
-		seed);
-	var value = _v1.a;
-	var nextSeed = _v1.b;
-	return _Utils_Tuple2(
-		value,
-		A3($author$project$Nats$Nuid$Nuid, len, charGen, nextSeed));
-};
-var $author$project$Nats$nextInbox = function (state) {
-	var _v0 = $author$project$Nats$Nuid$next(state.nuid);
-	var postfix = _v0.a;
-	var nuid = _v0.b;
-	return _Utils_Tuple2(
-		_Utils_ap(state.inboxPrefix, postfix),
-		_Utils_update(
-			state,
-			{nuid: nuid}));
-};
-var $author$project$Nats$Internal$SocketState$setStatus = F2(
-	function (status, state) {
-		return _Utils_update(
-			state,
-			{status: status});
-	});
-var $author$project$Nats$toCmd = F3(
-	function (cfg, effect, state) {
-		switch (effect.$) {
-			case 'Open':
-				var skt = effect.a.a;
-				return _Utils_Tuple2(
-					_Utils_update(
-						state,
-						{
-							defaultSocket: (skt._default || _Utils_eq(state.defaultSocket, $elm$core$Maybe$Nothing)) ? $elm$core$Maybe$Just(skt.id) : state.defaultSocket,
-							sockets: A3(
-								$elm$core$Dict$insert,
-								skt.id,
-								A2(
-									$author$project$Nats$Internal$SocketState$setStatus,
-									$author$project$Nats$Socket$Opening,
-									$author$project$Nats$Internal$SocketState$init(
-										$author$project$Nats$Internal$Types$Socket(skt))),
-								state.sockets)
-						}),
-					A2(
-						$elm$core$Platform$Cmd$map,
-						cfg.parentMsg,
-						cfg.ports.open(
-							_Utils_Tuple2(skt.id, skt.url))));
-			case 'Close':
-				var sid = effect.a;
-				var _v1 = A2($elm$core$Dict$get, sid, state.sockets);
-				if (_v1.$ === 'Nothing') {
-					return _Utils_Tuple2(state, $elm$core$Platform$Cmd$none);
-				} else {
-					var sockets = A2($elm$core$Dict$remove, sid, state.sockets);
-					var defaultSocket = (!_Utils_eq(
-						state.defaultSocket,
-						$elm$core$Maybe$Just(sid))) ? state.defaultSocket : A3(
-						$elm$core$Dict$foldl,
-						F3(
-							function (id, s, candidate) {
-								return (s.socket._default || _Utils_eq(candidate, $elm$core$Maybe$Nothing)) ? $elm$core$Maybe$Just(id) : candidate;
-							}),
-						$elm$core$Maybe$Nothing,
-						sockets);
-					return _Utils_Tuple2(
-						_Utils_update(
-							state,
-							{defaultSocket: defaultSocket, sockets: sockets}),
-						$elm$core$Platform$Cmd$none);
-				}
-			case 'Pub':
-				var sid = effect.a.sid;
-				var subject = effect.a.subject;
-				var replyTo = effect.a.replyTo;
-				var message = effect.a.message;
-				var _v2 = A2(
-					$elm$core$Maybe$withDefault,
-					A2($elm$core$Maybe$withDefault, '', state.defaultSocket),
-					sid);
-				if (_v2 === '') {
-					var _v3 = A2(cfg.debugLog, 'cannot publish message', 'Could not determine the sid');
-					return _Utils_Tuple2(state, $elm$core$Platform$Cmd$none);
-				} else {
-					var s = _v2;
-					return _Utils_Tuple2(
-						state,
-						A2(
-							$elm$core$Platform$Cmd$map,
-							cfg.parentMsg,
-							A2(
-								$author$project$Nats$doSend,
-								cfg,
-								{
-									message: $author$project$Nats$Protocol$toString(
-										$author$project$Nats$Protocol$PUB(
-											{
-												data: message,
-												replyTo: A2($elm$core$Maybe$withDefault, '', replyTo),
-												subject: subject
-											})),
-									sid: s
-								})));
-				}
-			case 'Request':
-				var sid = effect.a.sid;
-				var subject = effect.a.subject;
-				var message = effect.a.message;
-				var onResponse = effect.a.onResponse;
-				var timeout = effect.a.timeout;
-				var _v4 = A2(
-					$elm$core$Maybe$withDefault,
-					A2($elm$core$Maybe$withDefault, '', state.defaultSocket),
-					sid);
-				if (_v4 === '') {
-					var _v5 = A2(cfg.debugLog, 'cannot publish message', 'Could not determine the sid');
-					return _Utils_Tuple2(state, $elm$core$Platform$Cmd$none);
-				} else {
-					var s = _v4;
-					var _v6 = $author$project$Nats$nextInbox(state);
-					var inbox = _v6.a;
-					var state1 = _v6.b;
-					var _v7 = A4(
-						$author$project$Nats$updateSocket,
-						cfg,
-						s,
-						function (socket) {
-							var _v8 = A2(
-								$author$project$Nats$Internal$SocketState$addRequest,
-								{
-									deadline: state.time + (1000 * A2($elm$core$Maybe$withDefault, 5, timeout)),
-									inbox: inbox,
-									message: message,
-									onResponse: onResponse,
-									subject: subject
-								},
-								socket);
-							var newSocket = _v8.a;
-							var ops = _v8.b;
-							return _Utils_Tuple3(
-								$elm$core$Maybe$Just(newSocket),
-								_List_Nil,
-								$elm$core$Platform$Cmd$batch(
-									A2(
-										$elm$core$List$map,
-										function (op) {
-											return A2(
-												$author$project$Nats$doSend,
-												cfg,
-												{
-													message: $author$project$Nats$Protocol$toString(op),
-													sid: s
-												});
-										},
-										ops)));
-						},
-						state1);
-					var nextState = _v7.a;
-					var msg = _v7.b;
-					var cmd = _v7.c;
-					return _Utils_Tuple2(
-						nextState,
-						A2($elm$core$Platform$Cmd$map, cfg.parentMsg, cmd));
-				}
-			case 'BatchEffect':
-				var list = effect.a;
-				return A2(
-					$elm$core$Tuple$mapSecond,
-					$elm$core$Platform$Cmd$batch,
-					A3(
-						$elm$core$List$foldl,
-						F2(
-							function (eff, _v9) {
-								var st = _v9.a;
-								var cmd = _v9.b;
-								var _v10 = A3($author$project$Nats$toCmd, cfg, eff, st);
-								var newState = _v10.a;
-								var newCmd = _v10.b;
-								return _Utils_Tuple2(
-									newState,
-									A2($elm$core$List$cons, newCmd, cmd));
-							}),
-						_Utils_Tuple2(state, _List_Nil),
-						list));
-			default:
-				return _Utils_Tuple2(state, $elm$core$Platform$Cmd$none);
-		}
-	});
-var $author$project$Nats$applyEffectAndSub = F4(
-	function (cfg, effect, sub, state) {
-		var _v0 = A3($author$project$Nats$toCmd, cfg, effect, state);
-		var s1 = _v0.a;
-		var cmd1 = _v0.b;
-		var _v1 = A3($author$project$Nats$handleSub, cfg, sub, s1);
-		var s2 = _v1.a;
-		var cmd2 = _v1.b;
-		return _Utils_Tuple2(
-			s2,
-			$elm$core$Platform$Cmd$batch(
-				_List_fromArray(
-					[cmd1, cmd2])));
-	});
-var $author$project$Main$NatsMsg = function (a) {
-	return {$: 'NatsMsg', a: a};
-};
-var $author$project$Nats$Config$init = F2(
-	function (parentMsg, ports) {
-		return {
-			debug: false,
-			debugLog: F2(
-				function (_v0, s) {
-					return s;
-				}),
-			parentMsg: parentMsg,
-			ports: ports
-		};
-	});
-var $elm$core$Debug$log = _Debug_log;
-var $author$project$Main$natsClose = _Platform_outgoingPort('natsClose', $elm$json$Json$Encode$string);
-var $author$project$Main$natsOnClose = _Platform_incomingPort('natsOnClose', $elm$json$Json$Decode$string);
-var $author$project$Main$natsOnError = _Platform_incomingPort(
-	'natsOnError',
-	A2(
-		$elm$json$Json$Decode$andThen,
-		function (sid) {
-			return A2(
-				$elm$json$Json$Decode$andThen,
-				function (message) {
-					return $elm$json$Json$Decode$succeed(
-						{message: message, sid: sid});
-				},
-				A2($elm$json$Json$Decode$field, 'message', $elm$json$Json$Decode$string));
-		},
-		A2($elm$json$Json$Decode$field, 'sid', $elm$json$Json$Decode$string)));
-var $author$project$Main$natsOnMessage = _Platform_incomingPort(
-	'natsOnMessage',
-	A2(
-		$elm$json$Json$Decode$andThen,
-		function (sid) {
-			return A2(
-				$elm$json$Json$Decode$andThen,
-				function (message) {
-					return $elm$json$Json$Decode$succeed(
-						{message: message, sid: sid});
-				},
-				A2($elm$json$Json$Decode$field, 'message', $elm$json$Json$Decode$string));
-		},
-		A2($elm$json$Json$Decode$field, 'sid', $elm$json$Json$Decode$string)));
-var $author$project$Main$natsOnOpen = _Platform_incomingPort('natsOnOpen', $elm$json$Json$Decode$string);
-var $author$project$Main$natsOpen = _Platform_outgoingPort(
-	'natsOpen',
-	function ($) {
-		var a = $.a;
-		var b = $.b;
-		return A2(
-			$elm$json$Json$Encode$list,
-			$elm$core$Basics$identity,
-			_List_fromArray(
-				[
-					$elm$json$Json$Encode$string(a),
-					$elm$json$Json$Encode$string(b)
-				]));
-	});
-var $author$project$Main$natsSend = _Platform_outgoingPort(
-	'natsSend',
-	function ($) {
-		return $elm$json$Json$Encode$object(
-			_List_fromArray(
-				[
-					_Utils_Tuple2(
-					'message',
-					$elm$json$Json$Encode$string($.message)),
-					_Utils_Tuple2(
-					'sid',
-					$elm$json$Json$Encode$string($.sid))
-				]));
-	});
-var $author$project$Nats$Config$withDebug = F2(
-	function (value, cfg) {
-		return _Utils_update(
-			cfg,
-			{debug: value});
-	});
-var $author$project$Nats$Config$withDebugLog = F2(
-	function (debugLog, cfg) {
-		return _Utils_update(
-			cfg,
-			{debugLog: debugLog});
-	});
-var $author$project$Main$natsConfig = A2(
-	$author$project$Nats$Config$withDebugLog,
-	$elm$core$Debug$log,
-	A2(
-		$author$project$Nats$Config$withDebug,
-		true,
-		A2(
-			$author$project$Nats$Config$init,
-			$author$project$Main$NatsMsg,
-			{close: $author$project$Main$natsClose, onClose: $author$project$Main$natsOnClose, onError: $author$project$Main$natsOnError, onMessage: $author$project$Main$natsOnMessage, onOpen: $author$project$Main$natsOnOpen, open: $author$project$Main$natsOpen, send: $author$project$Main$natsSend})));
-var $author$project$Main$HandleRequest = function (a) {
-	return {$: 'HandleRequest', a: a};
-};
-var $author$project$Main$SubCompMsg = function (a) {
-	return {$: 'SubCompMsg', a: a};
-};
-var $author$project$Nats$Internal$Types$BatchSub = function (a) {
-	return {$: 'BatchSub', a: a};
-};
-var $author$project$Nats$Internal$Types$NoSub = {$: 'NoSub'};
-var $author$project$Nats$Sub$none = $author$project$Nats$Internal$Types$NoSub;
-var $author$project$Nats$Sub$batch = function (list) {
-	var _v0 = A2(
-		$elm$core$List$filter,
-		function (v) {
-			if (v.$ === 'NoSub') {
-				return false;
-			} else {
-				return true;
-			}
-		},
-		list);
-	if (!_v0.b) {
-		return $author$project$Nats$Internal$Types$NoSub;
-	} else {
-		var l = _v0;
-		return (1 === $elm$core$List$length(l)) ? A2(
-			$elm$core$Maybe$withDefault,
-			$author$project$Nats$Sub$none,
-			$elm$core$List$head(l)) : $author$project$Nats$Internal$Types$BatchSub(l);
-	}
-};
-var $author$project$Nats$Internal$Types$Subscribe = function (a) {
-	return {$: 'Subscribe', a: a};
-};
-var $author$project$Nats$groupSubscribe = F3(
-	function (subject, group, onMessage) {
-		return $author$project$Nats$Internal$Types$Subscribe(
-			{group: group, onMessage: onMessage, sid: $elm$core$Maybe$Nothing, subject: subject});
-	});
-var $author$project$Nats$Sub$map = F2(
-	function (aToMsg, sub) {
-		switch (sub.$) {
-			case 'Subscribe':
-				var sid = sub.a.sid;
-				var subject = sub.a.subject;
-				var group = sub.a.group;
-				var onMessage = sub.a.onMessage;
-				return $author$project$Nats$Internal$Types$Subscribe(
-					{
-						group: group,
-						onMessage: A2($elm$core$Basics$composeR, onMessage, aToMsg),
-						sid: sid,
-						subject: subject
-					});
-			case 'BatchSub':
-				var list = sub.a;
-				return $author$project$Nats$Internal$Types$BatchSub(
-					A2(
-						$elm$core$List$map,
-						$author$project$Nats$Sub$map(aToMsg),
-						list));
-			default:
-				return $author$project$Nats$Internal$Types$NoSub;
-		}
-	});
-var $author$project$SubComp$Receive = F2(
-	function (a, b) {
-		return {$: 'Receive', a: a, b: b};
-	});
-var $author$project$SubComp$receive = F2(
-	function (n, natsMessage) {
-		return A2($author$project$SubComp$Receive, n, natsMessage.data);
-	});
-var $author$project$Nats$subscribe = function (subject) {
-	return A2($author$project$Nats$groupSubscribe, subject, '');
-};
-var $author$project$SubComp$natsSubscriptions = function (model) {
-	return $author$project$Nats$Sub$batch(
-		A2(
-			$elm$core$List$map,
-			function (n) {
-				return A2(
-					$author$project$Nats$subscribe,
-					'test.subject',
-					$author$project$SubComp$receive(n));
-			},
-			A2($elm$core$List$range, 0, model.subCounter - 1)));
-};
-var $author$project$Main$natsSubscriptions = function (model) {
-	return $author$project$Nats$Sub$batch(
-		_List_fromArray(
-			[
-				A2(
-				$author$project$Nats$Sub$map,
-				$author$project$Main$SubCompMsg,
-				$author$project$SubComp$natsSubscriptions(model.subcomp)),
-				A3($author$project$Nats$groupSubscribe, 'say.hello.to.me', 'server', $author$project$Main$HandleRequest)
-			]));
-};
-var $author$project$Main$applyNatsEffect = F2(
-	function (effect, model) {
-		var _v0 = A4(
-			$author$project$Nats$applyEffectAndSub,
-			$author$project$Main$natsConfig,
-			effect,
-			$author$project$Main$natsSubscriptions(model),
-			model.nats);
-		var nats = _v0.a;
-		var cmd = _v0.b;
-		return _Utils_Tuple2(
-			_Utils_update(
-				model,
-				{nats: nats}),
-			cmd);
-	});
 var $elm$core$Basics$abs = function (n) {
 	return (n < 0) ? (-n) : n;
+};
+var $elm$random$Random$Generator = function (a) {
+	return {$: 'Generator', a: a};
 };
 var $elm$random$Random$andThen = F2(
 	function (callback, _v0) {
@@ -11822,6 +10848,19 @@ var $elm$random$Random$int = F2(
 				}
 			});
 	});
+var $elm$random$Random$map = F2(
+	function (func, _v0) {
+		var genA = _v0.a;
+		return $elm$random$Random$Generator(
+			function (seed0) {
+				var _v1 = genA(seed0);
+				var a = _v1.a;
+				var seed1 = _v1.b;
+				return _Utils_Tuple2(
+					func(a),
+					seed1);
+			});
+	});
 var $elm_community$random_extra$Random$Char$char = F2(
 	function (start, end) {
 		return A2(
@@ -11839,6 +10878,63 @@ var $author$project$Nats$Nuid$alphaNum = A2(
 		[$elm_community$random_extra$Random$Char$upperCaseLatin, $author$project$Nats$Nuid$num]));
 var $author$project$Nats$Nuid$defaultLen = 22;
 var $author$project$Nats$Nuid$new = A2($author$project$Nats$Nuid$Nuid, $author$project$Nats$Nuid$defaultLen, $author$project$Nats$Nuid$alphaNum);
+var $elm$random$Random$step = F2(
+	function (_v0, seed) {
+		var generator = _v0.a;
+		return generator(seed);
+	});
+var $elm$core$String$fromList = _String_fromList;
+var $elm$random$Random$listHelp = F4(
+	function (revList, n, gen, seed) {
+		listHelp:
+		while (true) {
+			if (n < 1) {
+				return _Utils_Tuple2(revList, seed);
+			} else {
+				var _v0 = gen(seed);
+				var value = _v0.a;
+				var newSeed = _v0.b;
+				var $temp$revList = A2($elm$core$List$cons, value, revList),
+					$temp$n = n - 1,
+					$temp$gen = gen,
+					$temp$seed = newSeed;
+				revList = $temp$revList;
+				n = $temp$n;
+				gen = $temp$gen;
+				seed = $temp$seed;
+				continue listHelp;
+			}
+		}
+	});
+var $elm$random$Random$list = F2(
+	function (n, _v0) {
+		var gen = _v0.a;
+		return $elm$random$Random$Generator(
+			function (seed) {
+				return A4($elm$random$Random$listHelp, _List_Nil, n, gen, seed);
+			});
+	});
+var $elm_community$random_extra$Random$String$string = F2(
+	function (stringLength, charGenerator) {
+		return A2(
+			$elm$random$Random$map,
+			$elm$core$String$fromList,
+			A2($elm$random$Random$list, stringLength, charGenerator));
+	});
+var $author$project$Nats$Nuid$next = function (_v0) {
+	var len = _v0.a;
+	var charGen = _v0.b;
+	var seed = _v0.c;
+	var _v1 = A2(
+		$elm$random$Random$step,
+		A2($elm_community$random_extra$Random$String$string, len, charGen),
+		seed);
+	var value = _v1.a;
+	var nextSeed = _v1.b;
+	return _Utils_Tuple2(
+		value,
+		A3($author$project$Nats$Nuid$Nuid, len, charGen, nextSeed));
+};
 var $elm$time$Time$posixToMillis = function (_v0) {
 	var millis = _v0.a;
 	return millis;
@@ -11849,13 +10945,14 @@ var $author$project$Nats$init = F2(
 			$author$project$Nats$Nuid$new(seed));
 		var inboxPrefix = _v0.a;
 		var nuid = _v0.b;
-		return {
-			defaultSocket: $elm$core$Maybe$Nothing,
-			inboxPrefix: inboxPrefix + '.',
-			nuid: nuid,
-			sockets: $elm$core$Dict$empty,
-			time: $elm$time$Time$posixToMillis(now)
-		};
+		return $author$project$Nats$State(
+			{
+				defaultSocket: $elm$core$Maybe$Nothing,
+				inboxPrefix: inboxPrefix + '.',
+				nuid: nuid,
+				sockets: $author$project$Nats$Internal$SocketStateCollection$empty,
+				time: $elm$time$Time$posixToMillis(now)
+			});
 	});
 var $author$project$SubComp$init = {received: _List_Nil, subCounter: 0};
 var $elm$random$Random$initialSeed = function (x) {
@@ -11871,77 +10968,591 @@ var $elm$time$Time$Posix = function (a) {
 	return {$: 'Posix', a: a};
 };
 var $elm$time$Time$millisToPosix = $elm$time$Time$Posix;
+var $author$project$Nats$Internal$Types$Socket = function (a) {
+	return {$: 'Socket', a: a};
+};
 var $author$project$Nats$Socket$new = F2(
 	function (sid, url) {
 		return $author$project$Nats$Internal$Types$Socket(
-			{
-				connectOptions: {
-					auth_token: $elm$core$Maybe$Nothing,
-					lang: 'Elm',
-					name: $elm$core$Maybe$Just('nats-rpc/elm-nats'),
-					pass: $elm$core$Maybe$Nothing,
-					pedantic: false,
-					protocol: 0,
-					user: $elm$core$Maybe$Nothing,
-					verbose: false,
-					version: '0.0.0'
-				},
-				_default: false,
-				id: sid,
-				onClose: $elm$core$Maybe$Nothing,
-				onError: $elm$core$Maybe$Nothing,
-				onOpen: $elm$core$Maybe$Nothing,
-				url: url
-			});
-	});
-var $author$project$Nats$Socket$onOpen = F2(
-	function (msg, _v0) {
-		var socket = _v0.a;
-		return $author$project$Nats$Internal$Types$Socket(
-			_Utils_update(
-				socket,
-				{
-					onOpen: $elm$core$Maybe$Just(msg)
-				}));
-	});
-var $author$project$Nats$Internal$Types$Open = function (a) {
-	return {$: 'Open', a: a};
-};
-var $author$project$Nats$open = $author$project$Nats$Internal$Types$Open;
-var $author$project$Nats$Socket$withUserPass = F3(
-	function (user, pass, _v0) {
-		var socket = _v0.a;
-		var connectOptions = socket.connectOptions;
-		return $author$project$Nats$Internal$Types$Socket(
-			_Utils_update(
-				socket,
-				{
-					connectOptions: _Utils_update(
-						connectOptions,
-						{
-							pass: $elm$core$Maybe$Just(pass),
-							user: $elm$core$Maybe$Just(user)
-						})
-				}));
+			{_default: false, id: sid, url: url});
 	});
 var $author$project$Main$init = function (flags) {
 	var nats = A2(
 		$author$project$Nats$init,
 		$elm$random$Random$initialSeed(flags.now),
 		$elm$time$Time$millisToPosix(flags.now));
-	return A2(
-		$author$project$Main$applyNatsEffect,
-		$author$project$Nats$open(
-			A2(
-				$author$project$Nats$Socket$onOpen,
-				$author$project$Main$OnOpen,
-				A3(
-					$author$project$Nats$Socket$withUserPass,
-					'test',
-					'test',
-					A2($author$project$Nats$Socket$new, '0', 'ws://localhost:8087')))),
-		{inputText: '', nats: nats, response: $elm$core$Maybe$Nothing, serverInfo: $elm$core$Maybe$Nothing, subcomp: $author$project$SubComp$init});
+	return _Utils_Tuple2(
+		{
+			inputText: '',
+			nats: nats,
+			response: $elm$core$Maybe$Nothing,
+			serverInfo: $elm$core$Maybe$Nothing,
+			socket: A2($author$project$Nats$Socket$new, '0', 'ws://localhost:8087'),
+			subcomp: $author$project$SubComp$init
+		},
+		$elm$core$Platform$Cmd$none);
 };
+var $author$project$Main$NatsMsg = function (a) {
+	return {$: 'NatsMsg', a: a};
+};
+var $elm$core$Debug$log = _Debug_log;
+var $author$project$Main$natsClose = _Platform_outgoingPort('natsClose', $elm$json$Json$Encode$string);
+var $author$project$Main$natsOnClose = _Platform_incomingPort('natsOnClose', $elm$json$Json$Decode$string);
+var $author$project$Main$natsOnError = _Platform_incomingPort(
+	'natsOnError',
+	A2(
+		$elm$json$Json$Decode$andThen,
+		function (sid) {
+			return A2(
+				$elm$json$Json$Decode$andThen,
+				function (message) {
+					return $elm$json$Json$Decode$succeed(
+						{message: message, sid: sid});
+				},
+				A2($elm$json$Json$Decode$field, 'message', $elm$json$Json$Decode$string));
+		},
+		A2($elm$json$Json$Decode$field, 'sid', $elm$json$Json$Decode$string)));
+var $author$project$Main$natsOnMessage = _Platform_incomingPort(
+	'natsOnMessage',
+	A2(
+		$elm$json$Json$Decode$andThen,
+		function (sid) {
+			return A2(
+				$elm$json$Json$Decode$andThen,
+				function (message) {
+					return $elm$json$Json$Decode$succeed(
+						{message: message, sid: sid});
+				},
+				A2($elm$json$Json$Decode$field, 'message', $elm$json$Json$Decode$string));
+		},
+		A2($elm$json$Json$Decode$field, 'sid', $elm$json$Json$Decode$string)));
+var $author$project$Main$natsOnOpen = _Platform_incomingPort('natsOnOpen', $elm$json$Json$Decode$string);
+var $author$project$Main$natsOpen = _Platform_outgoingPort(
+	'natsOpen',
+	function ($) {
+		var a = $.a;
+		var b = $.b;
+		return A2(
+			$elm$json$Json$Encode$list,
+			$elm$core$Basics$identity,
+			_List_fromArray(
+				[
+					$elm$json$Json$Encode$string(a),
+					$elm$json$Json$Encode$string(b)
+				]));
+	});
+var $author$project$Main$natsSend = _Platform_outgoingPort(
+	'natsSend',
+	function ($) {
+		return $elm$json$Json$Encode$object(
+			_List_fromArray(
+				[
+					_Utils_Tuple2(
+					'message',
+					$elm$json$Json$Encode$string($.message)),
+					_Utils_Tuple2(
+					'sid',
+					$elm$json$Json$Encode$string($.sid))
+				]));
+	});
+var $author$project$Nats$Protocol$Error = function (a) {
+	return {$: 'Error', a: a};
+};
+var $author$project$Nats$Protocol$MSG = F2(
+	function (a, b) {
+		return {$: 'MSG', a: a, b: b};
+	});
+var $author$project$Nats$Protocol$Operation = function (a) {
+	return {$: 'Operation', a: a};
+};
+var $author$project$Nats$Protocol$Partial = function (a) {
+	return {$: 'Partial', a: a};
+};
+var $author$project$Nats$Protocol$PartialOperation = function (a) {
+	return {$: 'PartialOperation', a: a};
+};
+var $elm$core$String$append = _String_append;
+var $author$project$Nats$Protocol$cr = '\u000D\n';
+var $elm$core$String$dropRight = F2(
+	function (n, string) {
+		return (n < 1) ? string : A3($elm$core$String$slice, 0, -n, string);
+	});
+var $elm$core$String$endsWith = _String_endsWith;
+var $author$project$Nats$Protocol$ERR = function (a) {
+	return {$: 'ERR', a: a};
+};
+var $author$project$Nats$Protocol$INFO = function (a) {
+	return {$: 'INFO', a: a};
+};
+var $author$project$Nats$Protocol$OK = {$: 'OK'};
+var $author$project$Nats$Protocol$PING = {$: 'PING'};
+var $author$project$Nats$Protocol$PONG = {$: 'PONG'};
+var $author$project$Nats$Protocol$ServerInfo = F7(
+	function (server_id, version, go, host, port_, auth_required, max_payload) {
+		return {auth_required: auth_required, go: go, host: host, max_payload: max_payload, port_: port_, server_id: server_id, version: version};
+	});
+var $elm$json$Json$Decode$bool = _Json_decodeBool;
+var $NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$custom = $elm$json$Json$Decode$map2($elm$core$Basics$apR);
+var $elm$json$Json$Decode$null = _Json_decodeNull;
+var $elm$json$Json$Decode$oneOf = _Json_oneOf;
+var $NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$optionalDecoder = F3(
+	function (path, valDecoder, fallback) {
+		var nullOr = function (decoder) {
+			return $elm$json$Json$Decode$oneOf(
+				_List_fromArray(
+					[
+						decoder,
+						$elm$json$Json$Decode$null(fallback)
+					]));
+		};
+		var handleResult = function (input) {
+			var _v0 = A2(
+				$elm$json$Json$Decode$decodeValue,
+				A2($elm$json$Json$Decode$at, path, $elm$json$Json$Decode$value),
+				input);
+			if (_v0.$ === 'Ok') {
+				var rawValue = _v0.a;
+				var _v1 = A2(
+					$elm$json$Json$Decode$decodeValue,
+					nullOr(valDecoder),
+					rawValue);
+				if (_v1.$ === 'Ok') {
+					var finalResult = _v1.a;
+					return $elm$json$Json$Decode$succeed(finalResult);
+				} else {
+					return A2(
+						$elm$json$Json$Decode$at,
+						path,
+						nullOr(valDecoder));
+				}
+			} else {
+				return $elm$json$Json$Decode$succeed(fallback);
+			}
+		};
+		return A2($elm$json$Json$Decode$andThen, handleResult, $elm$json$Json$Decode$value);
+	});
+var $NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$optional = F4(
+	function (key, valDecoder, fallback, decoder) {
+		return A2(
+			$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$custom,
+			A3(
+				$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$optionalDecoder,
+				_List_fromArray(
+					[key]),
+				valDecoder,
+				fallback),
+			decoder);
+	});
+var $NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required = F3(
+	function (key, valDecoder, decoder) {
+		return A2(
+			$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$custom,
+			A2($elm$json$Json$Decode$field, key, valDecoder),
+			decoder);
+	});
+var $author$project$Nats$Protocol$decodeServerInfo = A3(
+	$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+	'max_payload',
+	$elm$json$Json$Decode$int,
+	A4(
+		$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$optional,
+		'auth_required',
+		$elm$json$Json$Decode$bool,
+		true,
+		A3(
+			$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+			'port',
+			$elm$json$Json$Decode$int,
+			A3(
+				$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+				'host',
+				$elm$json$Json$Decode$string,
+				A3(
+					$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+					'go',
+					$elm$json$Json$Decode$string,
+					A3(
+						$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+						'version',
+						$elm$json$Json$Decode$string,
+						A3(
+							$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+							'server_id',
+							$elm$json$Json$Decode$string,
+							$elm$json$Json$Decode$succeed($author$project$Nats$Protocol$ServerInfo))))))));
+var $elm$regex$Regex$Match = F4(
+	function (match, index, number, submatches) {
+		return {index: index, match: match, number: number, submatches: submatches};
+	});
+var $elm$regex$Regex$findAtMost = _Regex_findAtMost;
+var $elm$core$List$head = function (list) {
+	if (list.b) {
+		var x = list.a;
+		var xs = list.b;
+		return $elm$core$Maybe$Just(x);
+	} else {
+		return $elm$core$Maybe$Nothing;
+	}
+};
+var $elm$regex$Regex$fromStringWith = _Regex_fromStringWith;
+var $elm$regex$Regex$fromString = function (string) {
+	return A2(
+		$elm$regex$Regex$fromStringWith,
+		{caseInsensitive: false, multiline: false},
+		string);
+};
+var $author$project$Nats$Protocol$messageRe = $elm$regex$Regex$fromString('^MSG ([a-zA-Z0-9._-]+) ([a-zA-Z0-9]+)( [a-zA-Z0-9._]+)? ([0-9]+)$');
+var $author$project$Nats$Protocol$parseCommandMessage = function (str) {
+	var matches = function () {
+		var _v3 = $author$project$Nats$Protocol$messageRe;
+		if (_v3.$ === 'Nothing') {
+			return _List_Nil;
+		} else {
+			var re = _v3.a;
+			return A3($elm$regex$Regex$findAtMost, 1, re, str);
+		}
+	}();
+	var _v0 = $elm$core$List$head(matches);
+	if (_v0.$ === 'Just') {
+		var match = _v0.a;
+		var args = A2(
+			$elm$core$List$map,
+			$elm$core$Maybe$withDefault(''),
+			match.submatches);
+		var replyTo = function () {
+			var _v2 = A2(
+				$elm$core$Maybe$withDefault,
+				'',
+				$elm$core$List$head(
+					A2($elm$core$List$drop, 2, args)));
+			if (_v2 === ' ') {
+				return '';
+			} else {
+				var v = _v2;
+				return v;
+			}
+		}();
+		var sid = A2(
+			$elm$core$Maybe$withDefault,
+			'',
+			$elm$core$List$head(
+				A2($elm$core$List$drop, 1, args)));
+		var size = A2(
+			$elm$core$Maybe$withDefault,
+			'',
+			$elm$core$List$head(
+				A2($elm$core$List$drop, 3, args)));
+		var subject = A2(
+			$elm$core$Maybe$withDefault,
+			'',
+			$elm$core$List$head(args));
+		var _v1 = $elm$core$String$toInt(size);
+		if (_v1.$ === 'Nothing') {
+			return $elm$core$Result$Err('Invalid size: ' + size);
+		} else {
+			var value = _v1.a;
+			return $elm$core$Result$Ok(
+				{replyTo: replyTo, sid: sid, size: value, subject: subject});
+		}
+	} else {
+		return $elm$core$Result$Err('Invalid MSG syntax: ' + str);
+	}
+};
+var $author$project$Nats$Protocol$parseCommand = function (c) {
+	switch (c) {
+		case 'PING':
+			return $elm$core$Result$Ok($author$project$Nats$Protocol$PING);
+		case 'PONG':
+			return $elm$core$Result$Ok($author$project$Nats$Protocol$PONG);
+		case '+OK':
+			return $elm$core$Result$Ok($author$project$Nats$Protocol$OK);
+		default:
+			if (A2($elm$core$String$startsWith, 'INFO ', c)) {
+				var _v1 = A2(
+					$elm$json$Json$Decode$decodeString,
+					$author$project$Nats$Protocol$decodeServerInfo,
+					A2($elm$core$String$dropLeft, 5, c));
+				if (_v1.$ === 'Ok') {
+					var info = _v1.a;
+					return $elm$core$Result$Ok(
+						$author$project$Nats$Protocol$INFO(info));
+				} else {
+					var err = _v1.a;
+					return $elm$core$Result$Err(
+						$elm$json$Json$Decode$errorToString(err));
+				}
+			} else {
+				if (A2($elm$core$String$startsWith, '-ERR ', c)) {
+					return $elm$core$Result$Ok(
+						$author$project$Nats$Protocol$ERR(
+							A2(
+								$elm$core$String$dropRight,
+								1,
+								A2($elm$core$String$dropLeft, 5, c))));
+				} else {
+					if (A2($elm$core$String$startsWith, 'MSG', c)) {
+						var _v2 = $author$project$Nats$Protocol$parseCommandMessage(c);
+						if (_v2.$ === 'Ok') {
+							var msg = _v2.a;
+							return $elm$core$Result$Ok(
+								A2(
+									$author$project$Nats$Protocol$MSG,
+									msg.sid,
+									{data: '', replyTo: msg.replyTo, size: msg.size, subject: msg.subject}));
+						} else {
+							var err = _v2.a;
+							return $elm$core$Result$Err(err);
+						}
+					} else {
+						return $elm$core$Result$Err('Invalid command \'' + (c + '\''));
+					}
+				}
+			}
+	}
+};
+var $author$project$Nats$Protocol$splitFirstLine = function (s) {
+	var _v0 = A2($elm$core$String$indexes, $author$project$Nats$Protocol$cr, s);
+	if (!_v0.b) {
+		return _Utils_Tuple2(s, '');
+	} else {
+		var i = _v0.a;
+		return _Utils_Tuple2(
+			A2($elm$core$String$left, i, s),
+			A2($elm$core$String$dropLeft, i + 2, s));
+	}
+};
+var $author$project$Nats$Protocol$parseString = F2(
+	function (str, partialOp) {
+		if (partialOp.$ === 'Just') {
+			var partial = partialOp.a.a;
+			var data = A2($elm$core$String$append, partial.data, str);
+			var newDataSize = $elm$core$String$length(data);
+			return (_Utils_eq(newDataSize, partial.size + 2) && A2($elm$core$String$endsWith, $author$project$Nats$Protocol$cr, data)) ? $author$project$Nats$Protocol$Operation(
+				A2(
+					$author$project$Nats$Protocol$MSG,
+					partial.sid,
+					{
+						data: A2($elm$core$String$dropRight, 2, data),
+						replyTo: partial.replyTo,
+						size: partial.size,
+						subject: partial.subject
+					})) : ((_Utils_cmp(newDataSize, partial.size + 2) > 0) ? $author$project$Nats$Protocol$Error('Received too many data for the message') : $author$project$Nats$Protocol$Partial(
+				$author$project$Nats$Protocol$PartialOperation(
+					_Utils_update(
+						partial,
+						{data: data}))));
+		} else {
+			var _v1 = $author$project$Nats$Protocol$splitFirstLine(str);
+			var firstLine = _v1.a;
+			var payload = _v1.b;
+			var _v2 = $author$project$Nats$Protocol$parseCommand(firstLine);
+			if (_v2.$ === 'Err') {
+				var err = _v2.a;
+				return $author$project$Nats$Protocol$Error(err);
+			} else {
+				if (_v2.a.$ === 'MSG') {
+					var _v3 = _v2.a;
+					var sid = _v3.a;
+					var msg = _v3.b;
+					return (_Utils_eq(
+						$elm$core$String$length(payload),
+						msg.size + 2) && A2($elm$core$String$endsWith, $author$project$Nats$Protocol$cr, payload)) ? $author$project$Nats$Protocol$Operation(
+						A2(
+							$author$project$Nats$Protocol$MSG,
+							sid,
+							{
+								data: A2($elm$core$String$dropRight, 2, payload),
+								replyTo: msg.replyTo,
+								size: msg.size,
+								subject: msg.subject
+							})) : ((_Utils_cmp(
+						$elm$core$String$length(payload),
+						msg.size + 2) > 0) ? $author$project$Nats$Protocol$Error('Too many data in the message payload') : $author$project$Nats$Protocol$Partial(
+						$author$project$Nats$Protocol$PartialOperation(
+							{data: payload, replyTo: msg.replyTo, sid: sid, size: msg.size, subject: msg.subject})));
+				} else {
+					var op = _v2.a;
+					return $author$project$Nats$Protocol$Operation(op);
+				}
+			}
+		}
+	});
+var $elm$json$Json$Encode$bool = _Json_wrap;
+var $elm$json$Json$Encode$int = _Json_wrap;
+var $author$project$Nats$Protocol$encodeConnect = function (options) {
+	return $elm$json$Json$Encode$object(
+		_Utils_ap(
+			_List_fromArray(
+				[
+					_Utils_Tuple2(
+					'verbose',
+					$elm$json$Json$Encode$bool(options.verbose)),
+					_Utils_Tuple2(
+					'pedantic',
+					$elm$json$Json$Encode$bool(options.pedantic)),
+					_Utils_Tuple2(
+					'lang',
+					$elm$json$Json$Encode$string(options.lang)),
+					_Utils_Tuple2(
+					'version',
+					$elm$json$Json$Encode$string(options.version)),
+					_Utils_Tuple2(
+					'protocol',
+					$elm$json$Json$Encode$int(options.protocol))
+				]),
+			_Utils_ap(
+				function () {
+					var _v0 = options.auth_token;
+					if (_v0.$ === 'Just') {
+						var auth_token = _v0.a;
+						return _List_fromArray(
+							[
+								_Utils_Tuple2(
+								'auth_token',
+								$elm$json$Json$Encode$string(auth_token))
+							]);
+					} else {
+						return _List_Nil;
+					}
+				}(),
+				_Utils_ap(
+					function () {
+						var _v1 = options.user;
+						if (_v1.$ === 'Just') {
+							var user = _v1.a;
+							return _List_fromArray(
+								[
+									_Utils_Tuple2(
+									'user',
+									$elm$json$Json$Encode$string(user))
+								]);
+						} else {
+							return _List_Nil;
+						}
+					}(),
+					_Utils_ap(
+						function () {
+							var _v2 = options.pass;
+							if (_v2.$ === 'Just') {
+								var pass = _v2.a;
+								return _List_fromArray(
+									[
+										_Utils_Tuple2(
+										'pass',
+										$elm$json$Json$Encode$string(pass))
+									]);
+							} else {
+								return _List_Nil;
+							}
+						}(),
+						function () {
+							var _v3 = options.name;
+							if (_v3.$ === 'Just') {
+								var name = _v3.a;
+								return _List_fromArray(
+									[
+										_Utils_Tuple2(
+										'name',
+										$elm$json$Json$Encode$string(name))
+									]);
+							} else {
+								return _List_Nil;
+							}
+						}())))));
+};
+var $author$project$Nats$Protocol$opHeader = function (op) {
+	switch (op.$) {
+		case 'INFO':
+			return '';
+		case 'CONNECT':
+			var options = op.a;
+			return A2(
+				$elm$core$String$append,
+				'CONNECT ',
+				A2(
+					$elm$json$Json$Encode$encode,
+					0,
+					$author$project$Nats$Protocol$encodeConnect(options)));
+		case 'MSG':
+			var sid = op.a;
+			var message = op.b;
+			return '';
+		case 'PING':
+			return 'PING';
+		case 'PONG':
+			return 'PONG';
+		case 'PUB':
+			var message = op.a;
+			return 'PUB ' + (message.subject + (((!$elm$core$String$isEmpty(message.replyTo)) ? (' ' + message.replyTo) : '') + (' ' + $elm$core$String$fromInt(message.size))));
+		case 'SUB':
+			var subject = op.a;
+			var queueGroup = op.b;
+			var sid = op.c;
+			return 'SUB ' + (subject + (' ' + (((!$elm$core$String$isEmpty(queueGroup)) ? (queueGroup + ' ') : '') + sid)));
+		case 'UNSUB':
+			var sid = op.a;
+			var maxMsgs = op.b;
+			return 'UNSUB ' + (sid + ((!(!maxMsgs)) ? (' ' + $elm$core$String$fromInt(maxMsgs)) : ''));
+		case 'OK':
+			return 'OK';
+		default:
+			var err = op.a;
+			return 'ERR \'' + (err + '\'');
+	}
+};
+var $author$project$Nats$Protocol$toString = function (op) {
+	return _Utils_ap(
+		$author$project$Nats$Protocol$opHeader(op),
+		_Utils_ap(
+			$author$project$Nats$Protocol$cr,
+			function () {
+				if (op.$ === 'PUB') {
+					var message = op.a;
+					return _Utils_ap(message.data, $author$project$Nats$Protocol$cr);
+				} else {
+					return '';
+				}
+			}()));
+};
+var $author$project$Nats$Config$string = F2(
+	function (parentMsg, ports) {
+		return {
+			debug: false,
+			debugLog: F2(
+				function (_v0, s) {
+					return s;
+				}),
+			fromPortMessage: $elm$core$Result$Ok,
+			parentMsg: parentMsg,
+			parse: $author$project$Nats$Protocol$parseString,
+			ports: ports,
+			size: $elm$core$String$length,
+			toPortMessage: $elm$core$Basics$identity,
+			write: $author$project$Nats$Protocol$toString
+		};
+	});
+var $author$project$Nats$Config$withDebug = F2(
+	function (value, cfg) {
+		return _Utils_update(
+			cfg,
+			{debug: value});
+	});
+var $author$project$Nats$Config$withDebugLog = F2(
+	function (debugLog, cfg) {
+		return _Utils_update(
+			cfg,
+			{debugLog: debugLog});
+	});
+var $author$project$Main$natsConfig = A2(
+	$author$project$Nats$Config$withDebugLog,
+	$elm$core$Debug$log,
+	A2(
+		$author$project$Nats$Config$withDebug,
+		true,
+		A2(
+			$author$project$Nats$Config$string,
+			$author$project$Main$NatsMsg,
+			{close: $author$project$Main$natsClose, onClose: $author$project$Main$natsOnClose, onError: $author$project$Main$natsOnError, onMessage: $author$project$Main$natsOnMessage, onOpen: $author$project$Main$natsOnOpen, open: $author$project$Main$natsOpen, send: $author$project$Main$natsSend})));
 var $author$project$Nats$Internal$Types$OnClose = function (a) {
 	return {$: 'OnClose', a: a};
 };
@@ -12136,8 +11747,8 @@ var $elm$time$Time$every = F2(
 		return $elm$time$Time$subscription(
 			A2($elm$time$Time$Every, interval, tagger));
 	});
-var $author$project$Nats$connect = F2(
-	function (cfg, state) {
+var $author$project$Nats$subscriptions = F2(
+	function (cfg, _v0) {
 		return A2(
 			$elm$core$Platform$Sub$map,
 			cfg.parentMsg,
@@ -12152,13 +11763,795 @@ var $author$project$Nats$connect = F2(
 					])));
 	});
 var $author$project$Main$subscriptions = function (model) {
-	return A2($author$project$Nats$connect, $author$project$Main$natsConfig, model.nats);
+	return A2($author$project$Nats$subscriptions, $author$project$Main$natsConfig, model.nats);
 };
+var $author$project$Nats$doSend = F2(
+	function (cfg, message) {
+		var _v0 = A2(cfg.debugLog, 'sending to ' + message.sid, message.message);
+		return cfg.ports.send(message);
+	});
+var $author$project$Nats$Protocol$SUB = F3(
+	function (a, b, c) {
+		return {$: 'SUB', a: a, b: b, c: c};
+	});
+var $author$project$Nats$Protocol$UNSUB = F2(
+	function (a, b) {
+		return {$: 'UNSUB', a: a, b: b};
+	});
+var $elm$core$Dict$filter = F2(
+	function (isGood, dict) {
+		return A3(
+			$elm$core$Dict$foldl,
+			F3(
+				function (k, v, d) {
+					return A2(isGood, k, v) ? A3($elm$core$Dict$insert, k, v, d) : d;
+				}),
+			$elm$core$Dict$empty,
+			dict);
+	});
+var $elm$core$List$filter = F2(
+	function (isGood, list) {
+		return A3(
+			$elm$core$List$foldr,
+			F2(
+				function (x, xs) {
+					return isGood(x) ? A2($elm$core$List$cons, x, xs) : xs;
+				}),
+			_List_Nil,
+			list);
+	});
+var $author$project$Nats$Internal$SocketState$getSubscriptionByID = F2(
+	function (id, state) {
+		return $elm$core$List$head(
+			A2(
+				$elm$core$List$filter,
+				A2(
+					$elm$core$Basics$composeR,
+					function ($) {
+						return $.id;
+					},
+					$elm$core$Basics$eq(id)),
+				state.activeSubscriptions));
+	});
+var $author$project$Nats$Internal$SocketState$isRequest = function (sub) {
+	var _v0 = sub.subType;
+	if (_v0.$ === 'Req') {
+		return true;
+	} else {
+		return false;
+	}
+};
+var $author$project$Nats$Internal$SocketState$finalizeSubscriptions = function (state) {
+	var nextSubscriptions = $elm$core$Dict$values(state.nextSubscriptions);
+	return _Utils_Tuple2(
+		_Utils_update(
+			state,
+			{
+				activeSubscriptions: nextSubscriptions,
+				nextSubscriptions: A2(
+					$elm$core$Dict$filter,
+					function (_v0) {
+						return $author$project$Nats$Internal$SocketState$isRequest;
+					},
+					state.nextSubscriptions)
+			}),
+		_Utils_ap(
+			A2(
+				$elm$core$List$filterMap,
+				function (sub) {
+					var _v1 = A2($author$project$Nats$Internal$SocketState$getSubscriptionByID, sub.id, state);
+					if (_v1.$ === 'Nothing') {
+						return $elm$core$Maybe$Just(
+							A3($author$project$Nats$Protocol$SUB, sub.subject, sub.group, sub.id));
+					} else {
+						return $elm$core$Maybe$Nothing;
+					}
+				},
+				nextSubscriptions),
+			A2(
+				$elm$core$List$filterMap,
+				function (sub) {
+					var _v2 = $elm$core$List$head(
+						A2(
+							$elm$core$List$filter,
+							function (next) {
+								return _Utils_eq(next.id, sub.id);
+							},
+							nextSubscriptions));
+					if (_v2.$ === 'Nothing') {
+						return $elm$core$Maybe$Just(
+							A2($author$project$Nats$Protocol$UNSUB, sub.id, 0));
+					} else {
+						return $elm$core$Maybe$Nothing;
+					}
+				},
+				state.activeSubscriptions)));
+};
+var $author$project$Nats$Internal$SocketState$Sub = {$: 'Sub'};
+var $author$project$Nats$Internal$SocketState$getSubscriptionBySubjectGroup = F2(
+	function (_v0, state) {
+		var subject = _v0.a;
+		var group = _v0.b;
+		return $elm$core$List$head(
+			A2(
+				$elm$core$List$filter,
+				function (sub) {
+					return _Utils_eq(
+						_Utils_Tuple2(sub.subject, sub.group),
+						_Utils_Tuple2(subject, group));
+				},
+				state.activeSubscriptions));
+	});
+var $author$project$Nats$Internal$SocketState$nextID = function (state) {
+	return state.lastSubID + 1;
+};
+var $author$project$Nats$Internal$SocketState$addSubscriptionHelper = F5(
+	function (subType, subject, group, onMessage, state) {
+		var _v0 = A2(
+			$elm$core$Dict$get,
+			_Utils_Tuple2(subject, group),
+			state.nextSubscriptions);
+		if (_v0.$ === 'Just') {
+			var sub = _v0.a;
+			return _Utils_update(
+				state,
+				{
+					nextSubscriptions: A3(
+						$elm$core$Dict$insert,
+						_Utils_Tuple2(subject, group),
+						_Utils_update(
+							sub,
+							{
+								handlers: A2($elm$core$List$cons, onMessage, sub.handlers)
+							}),
+						state.nextSubscriptions)
+				});
+		} else {
+			var _v1 = function () {
+				var _v2 = A2(
+					$author$project$Nats$Internal$SocketState$getSubscriptionBySubjectGroup,
+					_Utils_Tuple2(subject, group),
+					state);
+				if (_v2.$ === 'Just') {
+					var sub = _v2.a;
+					return _Utils_Tuple2(sub.id, state.lastSubID);
+				} else {
+					return _Utils_Tuple2(
+						$elm$core$String$fromInt(
+							$author$project$Nats$Internal$SocketState$nextID(state)),
+						$author$project$Nats$Internal$SocketState$nextID(state));
+				}
+			}();
+			var subID = _v1.a;
+			var lastSubID = _v1.b;
+			return _Utils_update(
+				state,
+				{
+					lastSubID: lastSubID,
+					nextSubscriptions: A3(
+						$elm$core$Dict$insert,
+						_Utils_Tuple2(subject, group),
+						{
+							group: group,
+							handlers: _List_fromArray(
+								[onMessage]),
+							id: subID,
+							subType: subType,
+							subject: subject
+						},
+						state.nextSubscriptions)
+				});
+		}
+	});
+var $author$project$Nats$Internal$SocketState$addSubscription = $author$project$Nats$Internal$SocketState$addSubscriptionHelper($author$project$Nats$Internal$SocketState$Sub);
+var $author$project$Nats$Internal$SocketStateCollection$findByID = F2(
+	function (sid, _v0) {
+		var list = _v0.a;
+		return $elm$core$List$head(
+			A2(
+				$elm$core$List$filter,
+				function (_v1) {
+					var socket = _v1.socket;
+					return _Utils_eq(socket.id, sid);
+				},
+				list));
+	});
+var $author$project$Nats$Socket$Undefined = {$: 'Undefined'};
+var $author$project$Nats$Internal$SocketState$init = F3(
+	function (options, onEvent, _v0) {
+		var socket = _v0.a;
+		return {activeSubscriptions: _List_Nil, connectOptions: options, lastSubID: 0, nextSubscriptions: $elm$core$Dict$empty, onEvent: onEvent, partialOperation: $elm$core$Maybe$Nothing, serverInfo: $elm$core$Maybe$Nothing, socket: socket, status: $author$project$Nats$Socket$Undefined};
+	});
+var $author$project$Nats$Internal$SocketStateCollection$internalRemove = function (sid) {
+	return $elm$core$List$filter(
+		function (_v0) {
+			var socket = _v0.socket;
+			return !_Utils_eq(socket.id, sid);
+		});
+};
+var $author$project$Nats$Internal$SocketStateCollection$insert = F2(
+	function (socket, _v0) {
+		var list = _v0.a;
+		return $author$project$Nats$Internal$SocketStateCollection$SocketStateCollection(
+			A2(
+				$elm$core$List$cons,
+				socket,
+				A2($author$project$Nats$Internal$SocketStateCollection$internalRemove, socket.socket.id, list)));
+	});
+var $author$project$Nats$Internal$SocketStateCollection$removeByID = F2(
+	function (sid, _v0) {
+		var list = _v0.a;
+		return $author$project$Nats$Internal$SocketStateCollection$SocketStateCollection(
+			A2($author$project$Nats$Internal$SocketStateCollection$internalRemove, sid, list));
+	});
+var $author$project$Nats$updateSocket = F4(
+	function (_v0, sid, fn, oState) {
+		var state = oState.a;
+		var _v1 = A2($author$project$Nats$Internal$SocketStateCollection$findByID, sid, state.sockets);
+		if (_v1.$ === 'Nothing') {
+			return _Utils_Tuple3(oState, _List_Nil, $elm$core$Platform$Cmd$none);
+		} else {
+			var socket = _v1.a;
+			var _v2 = fn(socket);
+			if (_v2.a.$ === 'Nothing') {
+				var _v3 = _v2.a;
+				var msgs = _v2.b;
+				var cmd = _v2.c;
+				return _Utils_Tuple3(
+					$author$project$Nats$State(
+						_Utils_update(
+							state,
+							{
+								sockets: A2($author$project$Nats$Internal$SocketStateCollection$removeByID, sid, state.sockets)
+							})),
+					msgs,
+					cmd);
+			} else {
+				var newSocket = _v2.a.a;
+				var msgs = _v2.b;
+				var cmd = _v2.c;
+				return _Utils_Tuple3(
+					$author$project$Nats$State(
+						_Utils_update(
+							state,
+							{
+								sockets: A2($author$project$Nats$Internal$SocketStateCollection$insert, newSocket, state.sockets)
+							})),
+					msgs,
+					cmd);
+			}
+		}
+	});
+var $author$project$Nats$handleSubHelper = F3(
+	function (cfg, sub, oState) {
+		var state = oState.a;
+		if (sub.$ === 'Connect') {
+			var options = sub.a;
+			var socket = sub.b;
+			var props = socket.a;
+			var onEvent = sub.c;
+			var _v1 = A2($author$project$Nats$Internal$SocketStateCollection$findByID, props.id, state.sockets);
+			if (_v1.$ === 'Nothing') {
+				return _Utils_Tuple2(
+					$author$project$Nats$State(
+						_Utils_update(
+							state,
+							{
+								defaultSocket: function () {
+									var _v2 = state.defaultSocket;
+									if (_v2.$ === 'Nothing') {
+										return $elm$core$Maybe$Just(props.id);
+									} else {
+										var id = _v2.a;
+										return props._default ? $elm$core$Maybe$Just(props.id) : $elm$core$Maybe$Just(id);
+									}
+								}(),
+								sockets: A2(
+									$author$project$Nats$Internal$SocketStateCollection$insert,
+									A3($author$project$Nats$Internal$SocketState$init, options, onEvent, socket),
+									state.sockets)
+							})),
+					A2(
+						$elm$core$Platform$Cmd$map,
+						cfg.parentMsg,
+						cfg.ports.open(
+							_Utils_Tuple2(props.id, props.url))));
+			} else {
+				return _Utils_Tuple2(oState, $elm$core$Platform$Cmd$none);
+			}
+		} else {
+			var sid = sub.a.sid;
+			var subject = sub.a.subject;
+			var group = sub.a.group;
+			var onMessage = sub.a.onMessage;
+			var _v3 = A2(
+				$elm$core$Maybe$withDefault,
+				A2($elm$core$Maybe$withDefault, '', state.defaultSocket),
+				sid);
+			if (_v3 === '') {
+				var _v4 = A2(cfg.debugLog, 'cannot subscribe', 'Could not determine the sid');
+				return _Utils_Tuple2(oState, $elm$core$Platform$Cmd$none);
+			} else {
+				var s = _v3;
+				var _v5 = A4(
+					$author$project$Nats$updateSocket,
+					cfg,
+					s,
+					function (socket) {
+						return _Utils_Tuple3(
+							$elm$core$Maybe$Just(
+								A4($author$project$Nats$Internal$SocketState$addSubscription, subject, group, onMessage, socket)),
+							_List_Nil,
+							$elm$core$Platform$Cmd$none);
+					},
+					oState);
+				var newState = _v5.a;
+				return _Utils_Tuple2(newState, $elm$core$Platform$Cmd$none);
+			}
+		}
+	});
+var $elm$core$Tuple$mapSecond = F2(
+	function (func, _v0) {
+		var x = _v0.a;
+		var y = _v0.b;
+		return _Utils_Tuple2(
+			x,
+			func(y));
+	});
+var $elm$core$Tuple$mapFirst = F2(
+	function (func, _v0) {
+		var x = _v0.a;
+		var y = _v0.b;
+		return _Utils_Tuple2(
+			func(x),
+			y);
+	});
+var $author$project$Nats$Internal$SocketStateCollection$mapWithEffect = F2(
+	function (fn, _v0) {
+		var list = _v0.a;
+		return A2(
+			$elm$core$Tuple$mapFirst,
+			$author$project$Nats$Internal$SocketStateCollection$SocketStateCollection,
+			A3(
+				$elm$core$List$foldr,
+				F2(
+					function (socket, _v1) {
+						var newList = _v1.a;
+						var effectList = _v1.b;
+						var _v2 = fn(socket);
+						var newSocket = _v2.a;
+						var effect = _v2.b;
+						return _Utils_Tuple2(
+							A2($elm$core$List$cons, newSocket, newList),
+							A2($elm$core$List$cons, effect, effectList));
+					}),
+				_Utils_Tuple2(_List_Nil, _List_Nil),
+				list));
+	});
+var $author$project$Nats$handleSub = F3(
+	function (cfg, _v0, state) {
+		var subList = _v0.a;
+		var _v1 = A2(
+			$elm$core$Tuple$mapSecond,
+			$elm$core$Platform$Cmd$batch,
+			A3(
+				$elm$core$List$foldl,
+				F2(
+					function (innerSub, _v2) {
+						var st = _v2.a;
+						var cmdList = _v2.b;
+						var _v3 = A3($author$project$Nats$handleSubHelper, cfg, innerSub, st);
+						var newState = _v3.a;
+						var newCmd = _v3.b;
+						return _Utils_Tuple2(
+							newState,
+							A2($elm$core$List$cons, newCmd, cmdList));
+					}),
+				_Utils_Tuple2(state, _List_Nil),
+				subList));
+		var nState = _v1.a.a;
+		var cmd = _v1.b;
+		var _v4 = A2(
+			$elm$core$Tuple$mapSecond,
+			$elm$core$List$concat,
+			A2(
+				$author$project$Nats$Internal$SocketStateCollection$mapWithEffect,
+				function (socket) {
+					return A2(
+						$elm$core$Tuple$mapSecond,
+						$elm$core$List$map(
+							function (op) {
+								return A2(
+									$elm$core$Platform$Cmd$map,
+									cfg.parentMsg,
+									A2(
+										$author$project$Nats$doSend,
+										cfg,
+										{
+											message: cfg.toPortMessage(
+												cfg.write(op)),
+											sid: socket.socket.id
+										}));
+							}),
+						$author$project$Nats$Internal$SocketState$finalizeSubscriptions(socket));
+				},
+				nState.sockets));
+		var sockets = _v4.a;
+		var opsCmds = _v4.b;
+		return _Utils_Tuple2(
+			$author$project$Nats$State(
+				_Utils_update(
+					nState,
+					{sockets: sockets})),
+			$elm$core$Platform$Cmd$batch(
+				A2($elm$core$List$cons, cmd, opsCmds)));
+	});
+var $author$project$Nats$Protocol$PUB = function (a) {
+	return {$: 'PUB', a: a};
+};
+var $author$project$Nats$Internal$SocketState$Req = function (a) {
+	return {$: 'Req', a: a};
+};
+var $author$project$Nats$Internal$SocketState$addRequest = F3(
+	function (cfg, req, state) {
+		return _Utils_Tuple2(
+			A5(
+				$author$project$Nats$Internal$SocketState$addSubscriptionHelper,
+				$author$project$Nats$Internal$SocketState$Req(
+					{
+						deadline: req.deadline,
+						onMessage: function (m) {
+							return _Utils_Tuple2(
+								$elm$core$Maybe$Just(m),
+								false);
+						},
+						onTimeout: A2($elm$core$Basics$composeR, $elm$core$Result$Err, req.onResponse)
+					}),
+				req.inbox,
+				'',
+				A2(
+					$elm$core$Basics$composeR,
+					function ($) {
+						return $.data;
+					},
+					A2($elm$core$Basics$composeR, $elm$core$Result$Ok, req.onResponse)),
+				state),
+			_List_fromArray(
+				[
+					$author$project$Nats$Protocol$PUB(
+					{
+						data: req.message,
+						replyTo: req.inbox,
+						size: cfg.size(req.message),
+						subject: req.subject
+					})
+				]));
+	});
+var $author$project$Nats$nextInbox = function (_v0) {
+	var state = _v0.a;
+	var _v1 = $author$project$Nats$Nuid$next(state.nuid);
+	var postfix = _v1.a;
+	var nuid = _v1.b;
+	return _Utils_Tuple2(
+		_Utils_ap(state.inboxPrefix, postfix),
+		$author$project$Nats$State(
+			_Utils_update(
+				state,
+				{nuid: nuid})));
+};
+var $author$project$Nats$toCmd = F3(
+	function (cfg, effect, oState) {
+		var state = oState.a;
+		switch (effect.$) {
+			case 'Pub':
+				var sid = effect.a.sid;
+				var subject = effect.a.subject;
+				var replyTo = effect.a.replyTo;
+				var message = effect.a.message;
+				var _v1 = A2(
+					$elm$core$Maybe$withDefault,
+					A2($elm$core$Maybe$withDefault, '', state.defaultSocket),
+					sid);
+				if (_v1 === '') {
+					var _v2 = A2(cfg.debugLog, 'cannot publish message', 'Could not determine the sid');
+					return _Utils_Tuple2(oState, $elm$core$Platform$Cmd$none);
+				} else {
+					var s = _v1;
+					return _Utils_Tuple2(
+						oState,
+						A2(
+							$elm$core$Platform$Cmd$map,
+							cfg.parentMsg,
+							A2(
+								$author$project$Nats$doSend,
+								cfg,
+								{
+									message: cfg.toPortMessage(
+										cfg.write(
+											$author$project$Nats$Protocol$PUB(
+												{
+													data: message,
+													replyTo: A2($elm$core$Maybe$withDefault, '', replyTo),
+													size: cfg.size(message),
+													subject: subject
+												}))),
+									sid: s
+								})));
+				}
+			case 'Request':
+				var sid = effect.a.sid;
+				var subject = effect.a.subject;
+				var message = effect.a.message;
+				var onResponse = effect.a.onResponse;
+				var timeout = effect.a.timeout;
+				var _v3 = A2(
+					$elm$core$Maybe$withDefault,
+					A2($elm$core$Maybe$withDefault, '', state.defaultSocket),
+					sid);
+				if (_v3 === '') {
+					var _v4 = A2(cfg.debugLog, 'cannot publish message', 'Could not determine the sid');
+					return _Utils_Tuple2(oState, $elm$core$Platform$Cmd$none);
+				} else {
+					var s = _v3;
+					var _v5 = $author$project$Nats$nextInbox(oState);
+					var inbox = _v5.a;
+					var state1 = _v5.b;
+					var _v6 = A4(
+						$author$project$Nats$updateSocket,
+						cfg,
+						s,
+						function (socket) {
+							var _v7 = A3(
+								$author$project$Nats$Internal$SocketState$addRequest,
+								cfg,
+								{
+									deadline: state.time + (1000 * A2($elm$core$Maybe$withDefault, 5, timeout)),
+									inbox: inbox,
+									message: message,
+									onResponse: onResponse,
+									subject: subject
+								},
+								socket);
+							var newSocket = _v7.a;
+							var ops = _v7.b;
+							return _Utils_Tuple3(
+								$elm$core$Maybe$Just(newSocket),
+								_List_Nil,
+								$elm$core$Platform$Cmd$batch(
+									A2(
+										$elm$core$List$map,
+										function (op) {
+											return A2(
+												$author$project$Nats$doSend,
+												cfg,
+												{
+													message: cfg.toPortMessage(
+														cfg.write(op)),
+													sid: s
+												});
+										},
+										ops)));
+						},
+						state1);
+					var nextState = _v6.a;
+					var msg = _v6.b;
+					var cmd = _v6.c;
+					return _Utils_Tuple2(
+						nextState,
+						A2($elm$core$Platform$Cmd$map, cfg.parentMsg, cmd));
+				}
+			case 'BatchEffect':
+				var list = effect.a;
+				return A2(
+					$elm$core$Tuple$mapSecond,
+					$elm$core$Platform$Cmd$batch,
+					A3(
+						$elm$core$List$foldl,
+						F2(
+							function (eff, _v8) {
+								var st = _v8.a;
+								var cmd = _v8.b;
+								var _v9 = A3($author$project$Nats$toCmd, cfg, eff, st);
+								var newState = _v9.a;
+								var newCmd = _v9.b;
+								return _Utils_Tuple2(
+									newState,
+									A2($elm$core$List$cons, newCmd, cmd));
+							}),
+						_Utils_Tuple2(oState, _List_Nil),
+						list));
+			default:
+				return _Utils_Tuple2(oState, $elm$core$Platform$Cmd$none);
+		}
+	});
+var $author$project$Nats$applyEffectAndSub = F4(
+	function (cfg, effect, sub, state) {
+		var _v0 = A3($author$project$Nats$toCmd, cfg, effect, state);
+		var s1 = _v0.a;
+		var cmd1 = _v0.b;
+		var _v1 = A3($author$project$Nats$handleSub, cfg, sub, s1);
+		var s2 = _v1.a;
+		var cmd2 = _v1.b;
+		return _Utils_Tuple2(
+			s2,
+			$elm$core$Platform$Cmd$batch(
+				_List_fromArray(
+					[cmd1, cmd2])));
+	});
+var $author$project$Main$HandleRequest = function (a) {
+	return {$: 'HandleRequest', a: a};
+};
+var $author$project$Main$OnSocketEvent = function (a) {
+	return {$: 'OnSocketEvent', a: a};
+};
+var $author$project$Main$SubCompMsg = function (a) {
+	return {$: 'SubCompMsg', a: a};
+};
+var $author$project$Nats$Internal$Sub$Sub = function (a) {
+	return {$: 'Sub', a: a};
+};
+var $elm$core$List$sortBy = _List_sortBy;
+var $author$project$Nats$Internal$Sub$sortPriority = function (sub) {
+	if (sub.$ === 'Connect') {
+		return 1;
+	} else {
+		return 2;
+	}
+};
+var $author$project$Nats$Internal$Sub$sort = $elm$core$List$sortBy($author$project$Nats$Internal$Sub$sortPriority);
+var $author$project$Nats$Internal$Sub$batch = A2(
+	$elm$core$Basics$composeR,
+	A2(
+		$elm$core$List$foldl,
+		function (_v0) {
+			var l = _v0.a;
+			return $elm$core$List$append(l);
+		},
+		_List_Nil),
+	A2($elm$core$Basics$composeR, $author$project$Nats$Internal$Sub$sort, $author$project$Nats$Internal$Sub$Sub));
+var $author$project$Nats$Sub$batch = $author$project$Nats$Internal$Sub$batch;
+var $author$project$Nats$Internal$Sub$Connect = F3(
+	function (a, b, c) {
+		return {$: 'Connect', a: a, b: b, c: c};
+	});
+var $author$project$Nats$Internal$Sub$connect = F3(
+	function (options, socket_, onEvent) {
+		return $author$project$Nats$Internal$Sub$Sub(
+			_List_fromArray(
+				[
+					A3($author$project$Nats$Internal$Sub$Connect, options, socket_, onEvent)
+				]));
+	});
+var $author$project$Nats$connect = $author$project$Nats$Internal$Sub$connect;
+var $author$project$Nats$Socket$connectOptions = F2(
+	function (name, version) {
+		return {
+			auth_token: $elm$core$Maybe$Nothing,
+			lang: 'elm',
+			name: $elm$core$Maybe$Just(name),
+			pass: $elm$core$Maybe$Nothing,
+			pedantic: false,
+			protocol: 0,
+			user: $elm$core$Maybe$Nothing,
+			verbose: false,
+			version: version
+		};
+	});
+var $author$project$Nats$Internal$Sub$Subscribe = function (a) {
+	return {$: 'Subscribe', a: a};
+};
+var $author$project$Nats$groupSubscribe = F3(
+	function (subject, group, onMessage) {
+		return $author$project$Nats$Internal$Sub$Sub(
+			_List_fromArray(
+				[
+					$author$project$Nats$Internal$Sub$Subscribe(
+					{group: group, onMessage: onMessage, sid: $elm$core$Maybe$Nothing, subject: subject})
+				]));
+	});
+var $author$project$Nats$Internal$Sub$map = F2(
+	function (aToMsg, _v0) {
+		var sub = _v0.a;
+		return $author$project$Nats$Internal$Sub$Sub(
+			A2(
+				$elm$core$List$map,
+				function (s) {
+					if (s.$ === 'Connect') {
+						var options = s.a;
+						var sock = s.b;
+						var onEvent = s.c;
+						return A3(
+							$author$project$Nats$Internal$Sub$Connect,
+							options,
+							sock,
+							A2($elm$core$Basics$composeR, onEvent, aToMsg));
+					} else {
+						var sid = s.a.sid;
+						var subject = s.a.subject;
+						var group = s.a.group;
+						var onMessage = s.a.onMessage;
+						return $author$project$Nats$Internal$Sub$Subscribe(
+							{
+								group: group,
+								onMessage: A2($elm$core$Basics$composeR, onMessage, aToMsg),
+								sid: sid,
+								subject: subject
+							});
+					}
+				},
+				sub));
+	});
+var $author$project$Nats$Sub$map = $author$project$Nats$Internal$Sub$map;
+var $author$project$SubComp$Receive = F2(
+	function (a, b) {
+		return {$: 'Receive', a: a, b: b};
+	});
+var $author$project$SubComp$receive = F2(
+	function (n, natsMessage) {
+		return A2($author$project$SubComp$Receive, n, natsMessage.data);
+	});
+var $author$project$Nats$subscribe = function (subject) {
+	return A2($author$project$Nats$groupSubscribe, subject, '');
+};
+var $author$project$SubComp$natsSubscriptions = function (model) {
+	return $author$project$Nats$Sub$batch(
+		A2(
+			$elm$core$List$map,
+			function (n) {
+				return A2(
+					$author$project$Nats$subscribe,
+					'test.subject',
+					$author$project$SubComp$receive(n));
+			},
+			A2($elm$core$List$range, 0, model.subCounter - 1)));
+};
+var $author$project$Nats$Socket$withUserPass = F3(
+	function (user, pass, options) {
+		return _Utils_update(
+			options,
+			{
+				pass: $elm$core$Maybe$Just(pass),
+				user: $elm$core$Maybe$Just(user)
+			});
+	});
+var $author$project$Main$natsSubscriptions = function (model) {
+	return $author$project$Nats$Sub$batch(
+		_List_fromArray(
+			[
+				A2(
+				$author$project$Nats$Sub$map,
+				$author$project$Main$SubCompMsg,
+				$author$project$SubComp$natsSubscriptions(model.subcomp)),
+				A3($author$project$Nats$groupSubscribe, 'say.hello.to.me', 'server', $author$project$Main$HandleRequest),
+				A3(
+				$author$project$Nats$connect,
+				A3(
+					$author$project$Nats$Socket$withUserPass,
+					'test',
+					'test',
+					A2($author$project$Nats$Socket$connectOptions, 'Demo', '0.1')),
+				model.socket,
+				$author$project$Main$OnSocketEvent)
+			]));
+};
+var $author$project$Main$applyNatsEffect = F2(
+	function (effect, model) {
+		var _v0 = A4(
+			$author$project$Nats$applyEffectAndSub,
+			$author$project$Main$natsConfig,
+			effect,
+			$author$project$Main$natsSubscriptions(model),
+			model.nats);
+		var nats = _v0.a;
+		var cmd = _v0.b;
+		return _Utils_Tuple2(
+			_Utils_update(
+				model,
+				{nats: nats}),
+			cmd);
+	});
 var $author$project$Nats$Internal$Types$BatchEffect = function (a) {
 	return {$: 'BatchEffect', a: a};
-};
-var $author$project$Nats$Internal$Types$Close = function (a) {
-	return {$: 'Close', a: a};
 };
 var $author$project$Nats$Internal$Types$NoEffect = {$: 'NoEffect'};
 var $author$project$Nats$Internal$Types$Pub = function (a) {
@@ -12167,46 +12560,9 @@ var $author$project$Nats$Internal$Types$Pub = function (a) {
 var $author$project$Nats$Internal$Types$Request = function (a) {
 	return {$: 'Request', a: a};
 };
-var $elm$core$Maybe$map = F2(
-	function (f, maybe) {
-		if (maybe.$ === 'Just') {
-			var value = maybe.a;
-			return $elm$core$Maybe$Just(
-				f(value));
-		} else {
-			return $elm$core$Maybe$Nothing;
-		}
-	});
-var $author$project$Nats$Internal$Types$mapSocket = F2(
-	function (fn, _v0) {
-		var socket = _v0.a;
-		return $author$project$Nats$Internal$Types$Socket(
-			{
-				connectOptions: socket.connectOptions,
-				_default: socket._default,
-				id: socket.id,
-				onClose: A2($elm$core$Maybe$map, fn, socket.onClose),
-				onError: A2(
-					$elm$core$Maybe$map,
-					$elm$core$Basics$composeL(fn),
-					socket.onError),
-				onOpen: A2(
-					$elm$core$Maybe$map,
-					$elm$core$Basics$composeL(fn),
-					socket.onOpen),
-				url: socket.url
-			});
-	});
 var $author$project$Nats$Effect$map = F2(
 	function (fn, effect) {
 		switch (effect.$) {
-			case 'Open':
-				var socket = effect.a;
-				return $author$project$Nats$Internal$Types$Open(
-					A2($author$project$Nats$Internal$Types$mapSocket, fn, socket));
-			case 'Close':
-				var id = effect.a;
-				return $author$project$Nats$Internal$Types$Close(id);
 			case 'Pub':
 				var pub = effect.a;
 				return $author$project$Nats$Internal$Types$Pub(pub);
@@ -12265,6 +12621,9 @@ var $author$project$Nats$Socket$Error = function (a) {
 	return {$: 'Error', a: a};
 };
 var $author$project$Nats$Socket$Opened = {$: 'Opened'};
+var $author$project$Nats$Events$SocketError = function (a) {
+	return {$: 'SocketError', a: a};
+};
 var $author$project$Nats$Internal$SocketState$Closed = {$: 'Closed'};
 var $author$project$Nats$Internal$SocketState$handleTimeouts = F2(
 	function (time, state) {
@@ -12309,297 +12668,9 @@ var $author$project$Nats$Internal$SocketState$handleTimeouts = F2(
 				{nextSubscriptions: subs}),
 			msgList);
 	});
-var $author$project$Nats$Protocol$ERR = function (a) {
-	return {$: 'ERR', a: a};
-};
-var $author$project$Nats$Protocol$Error = function (a) {
-	return {$: 'Error', a: a};
-};
-var $author$project$Nats$Protocol$INFO = function (a) {
-	return {$: 'INFO', a: a};
-};
-var $author$project$Nats$Protocol$MSG = F2(
-	function (a, b) {
-		return {$: 'MSG', a: a, b: b};
-	});
-var $author$project$Nats$Protocol$OK = {$: 'OK'};
-var $author$project$Nats$Protocol$Operation = function (a) {
-	return {$: 'Operation', a: a};
-};
-var $author$project$Nats$Protocol$PING = {$: 'PING'};
-var $author$project$Nats$Protocol$PONG = {$: 'PONG'};
-var $author$project$Nats$Protocol$Partial = function (a) {
-	return {$: 'Partial', a: a};
-};
-var $author$project$Nats$Protocol$PartialOperation = function (a) {
-	return {$: 'PartialOperation', a: a};
-};
-var $author$project$Nats$Protocol$ServerInfo = F7(
-	function (server_id, version, go, host, port_, auth_required, max_payload) {
-		return {auth_required: auth_required, go: go, host: host, max_payload: max_payload, port_: port_, server_id: server_id, version: version};
-	});
-var $elm$json$Json$Decode$bool = _Json_decodeBool;
-var $NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$custom = $elm$json$Json$Decode$map2($elm$core$Basics$apR);
-var $elm$json$Json$Decode$null = _Json_decodeNull;
-var $elm$json$Json$Decode$oneOf = _Json_oneOf;
-var $NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$optionalDecoder = F3(
-	function (path, valDecoder, fallback) {
-		var nullOr = function (decoder) {
-			return $elm$json$Json$Decode$oneOf(
-				_List_fromArray(
-					[
-						decoder,
-						$elm$json$Json$Decode$null(fallback)
-					]));
-		};
-		var handleResult = function (input) {
-			var _v0 = A2(
-				$elm$json$Json$Decode$decodeValue,
-				A2($elm$json$Json$Decode$at, path, $elm$json$Json$Decode$value),
-				input);
-			if (_v0.$ === 'Ok') {
-				var rawValue = _v0.a;
-				var _v1 = A2(
-					$elm$json$Json$Decode$decodeValue,
-					nullOr(valDecoder),
-					rawValue);
-				if (_v1.$ === 'Ok') {
-					var finalResult = _v1.a;
-					return $elm$json$Json$Decode$succeed(finalResult);
-				} else {
-					return A2(
-						$elm$json$Json$Decode$at,
-						path,
-						nullOr(valDecoder));
-				}
-			} else {
-				return $elm$json$Json$Decode$succeed(fallback);
-			}
-		};
-		return A2($elm$json$Json$Decode$andThen, handleResult, $elm$json$Json$Decode$value);
-	});
-var $NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$optional = F4(
-	function (key, valDecoder, fallback, decoder) {
-		return A2(
-			$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$custom,
-			A3(
-				$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$optionalDecoder,
-				_List_fromArray(
-					[key]),
-				valDecoder,
-				fallback),
-			decoder);
-	});
-var $NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required = F3(
-	function (key, valDecoder, decoder) {
-		return A2(
-			$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$custom,
-			A2($elm$json$Json$Decode$field, key, valDecoder),
-			decoder);
-	});
-var $author$project$Nats$Protocol$decodeServerInfo = A3(
-	$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
-	'max_payload',
-	$elm$json$Json$Decode$int,
-	A4(
-		$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$optional,
-		'auth_required',
-		$elm$json$Json$Decode$bool,
-		true,
-		A3(
-			$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
-			'port',
-			$elm$json$Json$Decode$int,
-			A3(
-				$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
-				'host',
-				$elm$json$Json$Decode$string,
-				A3(
-					$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
-					'go',
-					$elm$json$Json$Decode$string,
-					A3(
-						$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
-						'version',
-						$elm$json$Json$Decode$string,
-						A3(
-							$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
-							'server_id',
-							$elm$json$Json$Decode$string,
-							$elm$json$Json$Decode$succeed($author$project$Nats$Protocol$ServerInfo))))))));
-var $elm$core$String$dropRight = F2(
-	function (n, string) {
-		return (n < 1) ? string : A3($elm$core$String$slice, 0, -n, string);
-	});
-var $elm$core$String$endsWith = _String_endsWith;
-var $author$project$Nats$Protocol$isComplete = function (partial) {
-	return _Utils_eq(
-		$elm$core$String$length(partial.data),
-		partial.size);
-};
-var $elm$regex$Regex$Match = F4(
-	function (match, index, number, submatches) {
-		return {index: index, match: match, number: number, submatches: submatches};
-	});
-var $elm$regex$Regex$findAtMost = _Regex_findAtMost;
-var $elm$regex$Regex$fromStringWith = _Regex_fromStringWith;
-var $elm$regex$Regex$fromString = function (string) {
-	return A2(
-		$elm$regex$Regex$fromStringWith,
-		{caseInsensitive: false, multiline: false},
-		string);
-};
-var $author$project$Nats$Protocol$messageRe = $elm$regex$Regex$fromString('^MSG ([a-zA-Z0-9._-]+) ([a-zA-Z0-9]+)( [a-zA-Z0-9._]+)? ([0-9]+)\\r\\n(.*)$');
-var $author$project$Nats$Protocol$matchMessage = function (str) {
-	var matches = function () {
-		var _v1 = $author$project$Nats$Protocol$messageRe;
-		if (_v1.$ === 'Nothing') {
-			return _List_Nil;
-		} else {
-			var re = _v1.a;
-			return A3($elm$regex$Regex$findAtMost, 1, re, str);
-		}
-	}();
-	var _v0 = $elm$core$List$head(matches);
-	if (_v0.$ === 'Just') {
-		var match = _v0.a;
-		return $elm$core$Result$Ok(match.submatches);
-	} else {
-		return $elm$core$Result$Err('Invalid MSG syntax: ' + str);
-	}
-};
-var $author$project$Nats$Protocol$parseMessage = function (str) {
-	var _v0 = $author$project$Nats$Protocol$matchMessage(str);
-	if (_v0.$ === 'Ok') {
-		var subm = _v0.a;
-		var args = A2(
-			$elm$core$List$map,
-			$elm$core$Maybe$withDefault(''),
-			subm);
-		var payload = A2(
-			$elm$core$Maybe$withDefault,
-			'',
-			$elm$core$List$head(
-				A2($elm$core$List$drop, 4, args)));
-		var replyTo = function () {
-			var _v2 = A2(
-				$elm$core$Maybe$withDefault,
-				'',
-				$elm$core$List$head(
-					A2($elm$core$List$drop, 2, args)));
-			if (_v2 === ' ') {
-				return '';
-			} else {
-				var v = _v2;
-				return v;
-			}
-		}();
-		var sid = A2(
-			$elm$core$Maybe$withDefault,
-			'',
-			$elm$core$List$head(
-				A2($elm$core$List$drop, 1, args)));
-		var size = $elm$core$String$toInt(
-			A2(
-				$elm$core$Maybe$withDefault,
-				'',
-				$elm$core$List$head(
-					A2($elm$core$List$drop, 3, args))));
-		var subject = A2(
-			$elm$core$Maybe$withDefault,
-			'',
-			$elm$core$List$head(args));
-		if (size.$ === 'Nothing') {
-			return $elm$core$Result$Err('Invalid message size');
-		} else {
-			var s = size.a;
-			return $elm$core$Result$Ok(
-				{data: payload, replyTo: replyTo, sid: sid, size: s, subject: subject});
-		}
-	} else {
-		var err = _v0.a;
-		return $elm$core$Result$Err(err);
-	}
-};
-var $author$project$Nats$Protocol$toMessage = function (_v0) {
-	var subject = _v0.subject;
-	var replyTo = _v0.replyTo;
-	var data = _v0.data;
-	return {data: data, replyTo: replyTo, subject: subject};
-};
-var $author$project$Nats$Protocol$parseOperation = F2(
-	function (str, partialOp) {
-		if (partialOp.$ === 'Just') {
-			var partial = partialOp.a.a;
-			var msg = _Utils_update(
-				partial,
-				{
-					data: A2($elm$core$String$append, partial.data, str)
-				});
-			return $author$project$Nats$Protocol$isComplete(msg) ? $author$project$Nats$Protocol$Operation(
-				A2(
-					$author$project$Nats$Protocol$MSG,
-					partial.sid,
-					$author$project$Nats$Protocol$toMessage(partial))) : $author$project$Nats$Protocol$Partial(
-				$author$project$Nats$Protocol$PartialOperation(msg));
-		} else {
-			var stripped = A2($elm$core$String$endsWith, '\u000D\n', str) ? A2($elm$core$String$dropRight, 2, str) : str;
-			switch (stripped) {
-				case 'PING':
-					return $author$project$Nats$Protocol$Operation($author$project$Nats$Protocol$PING);
-				case 'PONG':
-					return $author$project$Nats$Protocol$Operation($author$project$Nats$Protocol$PONG);
-				case '+OK':
-					return $author$project$Nats$Protocol$Operation($author$project$Nats$Protocol$OK);
-				default:
-					if (A2($elm$core$String$startsWith, 'INFO ', stripped)) {
-						var _v2 = A2(
-							$elm$json$Json$Decode$decodeString,
-							$author$project$Nats$Protocol$decodeServerInfo,
-							A2($elm$core$String$dropLeft, 5, stripped));
-						if (_v2.$ === 'Ok') {
-							var info = _v2.a;
-							return $author$project$Nats$Protocol$Operation(
-								$author$project$Nats$Protocol$INFO(info));
-						} else {
-							var err = _v2.a;
-							return $author$project$Nats$Protocol$Error(
-								$elm$json$Json$Decode$errorToString(err));
-						}
-					} else {
-						if (A2($elm$core$String$startsWith, '-ERR ', stripped)) {
-							return $author$project$Nats$Protocol$Operation(
-								$author$project$Nats$Protocol$ERR(
-									A2(
-										$elm$core$String$dropRight,
-										1,
-										A2($elm$core$String$dropLeft, 5, stripped))));
-						} else {
-							if (A2($elm$core$String$startsWith, 'MSG', stripped)) {
-								var _v3 = $author$project$Nats$Protocol$parseMessage(stripped);
-								if (_v3.$ === 'Ok') {
-									var partial = _v3.a;
-									return $author$project$Nats$Protocol$isComplete(partial) ? $author$project$Nats$Protocol$Operation(
-										A2(
-											$author$project$Nats$Protocol$MSG,
-											partial.sid,
-											{data: partial.data, replyTo: partial.replyTo, subject: partial.subject})) : $author$project$Nats$Protocol$Partial(
-										$author$project$Nats$Protocol$PartialOperation(partial));
-								} else {
-									var err = _v3.a;
-									return $author$project$Nats$Protocol$Error(err);
-								}
-							} else {
-								return $author$project$Nats$Protocol$Error('Invalid command \'' + (stripped + '\''));
-							}
-						}
-					}
-			}
-		}
-	});
-var $author$project$Nats$Internal$SocketState$parse = F2(
-	function (str, state) {
-		var _v0 = A2($author$project$Nats$Protocol$parseOperation, str, state.partialOperation);
+var $author$project$Nats$Internal$SocketState$parse = F3(
+	function (cfg, data, state) {
+		var _v0 = A2(cfg.parse, data, state.partialOperation);
 		switch (_v0.$) {
 			case 'Operation':
 				var op = _v0.a;
@@ -12632,6 +12703,9 @@ var $author$project$Nats$Internal$SocketState$parse = F2(
 var $author$project$Nats$Protocol$CONNECT = function (a) {
 	return {$: 'CONNECT', a: a};
 };
+var $author$project$Nats$Events$SocketOpen = function (a) {
+	return {$: 'SocketOpen', a: a};
+};
 var $author$project$Nats$Internal$SocketState$receiveOperation = F2(
 	function (operation, state) {
 		switch (operation.$) {
@@ -12643,22 +12717,15 @@ var $author$project$Nats$Internal$SocketState$receiveOperation = F2(
 						{
 							serverInfo: $elm$core$Maybe$Just(serverInfo)
 						}),
-					function () {
-						var _v1 = state.socket.onOpen;
-						if (_v1.$ === 'Just') {
-							var onOpen = _v1.a;
-							return _List_fromArray(
-								[
-									onOpen(serverInfo)
-								]);
-						} else {
-							return _List_Nil;
-						}
-					}(),
+					_List_fromArray(
+						[
+							state.onEvent(
+							$author$project$Nats$Events$SocketOpen(serverInfo))
+						]),
 					$elm$core$List$reverse(
 						A2(
 							$elm$core$List$cons,
-							$author$project$Nats$Protocol$CONNECT(state.socket.connectOptions),
+							$author$project$Nats$Protocol$CONNECT(state.connectOptions),
 							A2(
 								$elm$core$List$map,
 								function (sub) {
@@ -12674,16 +12741,16 @@ var $author$project$Nats$Internal$SocketState$receiveOperation = F2(
 			case 'MSG':
 				var id = operation.a;
 				var message = operation.b;
-				var _v2 = A2($author$project$Nats$Internal$SocketState$getSubscriptionByID, id, state);
-				if (_v2.$ === 'Nothing') {
+				var _v1 = A2($author$project$Nats$Internal$SocketState$getSubscriptionByID, id, state);
+				if (_v1.$ === 'Nothing') {
 					return _Utils_Tuple3(state, _List_Nil, _List_Nil);
 				} else {
-					var sub = _v2.a;
-					var _v3 = function () {
-						var _v4 = sub.subType;
-						switch (_v4.$) {
+					var sub = _v1.a;
+					var _v2 = function () {
+						var _v3 = sub.subType;
+						switch (_v3.$) {
 							case 'Req':
-								var onMessage = _v4.a.onMessage;
+								var onMessage = _v3.a.onMessage;
 								return onMessage(message);
 							case 'Closed':
 								return _Utils_Tuple2($elm$core$Maybe$Nothing, false);
@@ -12693,8 +12760,8 @@ var $author$project$Nats$Internal$SocketState$receiveOperation = F2(
 									true);
 						}
 					}();
-					var actualMessage = _v3.a;
-					var _continue = _v3.b;
+					var actualMessage = _v2.a;
+					var _continue = _v2.b;
 					var nextState = _continue ? state : _Utils_update(
 						state,
 						{
@@ -12727,9 +12794,9 @@ var $author$project$Nats$Internal$SocketState$receiveOperation = F2(
 				return _Utils_Tuple3(state, _List_Nil, _List_Nil);
 		}
 	});
-var $author$project$Nats$Internal$SocketState$receive = F2(
-	function (str, state) {
-		var _v0 = A2($author$project$Nats$Internal$SocketState$parse, str, state);
+var $author$project$Nats$Internal$SocketState$receive = F3(
+	function (cfg, data, state) {
+		var _v0 = A3($author$project$Nats$Internal$SocketState$parse, cfg, data, state);
 		var parseState = _v0.a;
 		var maybeOperation = _v0.b;
 		if (maybeOperation.$ === 'Nothing') {
@@ -12739,22 +12806,40 @@ var $author$project$Nats$Internal$SocketState$receive = F2(
 			return A2($author$project$Nats$Internal$SocketState$receiveOperation, op, parseState);
 		}
 	});
+var $author$project$Nats$Internal$SocketState$setStatus = F2(
+	function (status, state) {
+		return _Utils_update(
+			state,
+			{status: status});
+	});
+var $author$project$Nats$Internal$SocketStateCollection$update = F3(
+	function (sid, fn, _v0) {
+		var list = _v0.a;
+		return $author$project$Nats$Internal$SocketStateCollection$SocketStateCollection(
+			A2(
+				$elm$core$List$map,
+				function (socket) {
+					return _Utils_eq(socket.socket.id, sid) ? fn(socket) : socket;
+				},
+				list));
+	});
 var $author$project$Nats$updateWithEffects = F3(
-	function (cfg, msg, state) {
+	function (cfg, msg, oState) {
+		var state = oState.a;
 		switch (msg.$) {
 			case 'OnOpen':
 				var sid = msg.a;
 				return _Utils_Tuple3(
-					_Utils_update(
-						state,
-						{
-							sockets: A3(
-								$elm$core$Dict$update,
-								sid,
-								$elm$core$Maybe$map(
-									$author$project$Nats$Internal$SocketState$setStatus($author$project$Nats$Socket$Opened)),
-								state.sockets)
-						}),
+					$author$project$Nats$State(
+						_Utils_update(
+							state,
+							{
+								sockets: A3(
+									$author$project$Nats$Internal$SocketStateCollection$update,
+									sid,
+									$author$project$Nats$Internal$SocketState$setStatus($author$project$Nats$Socket$Opened),
+									state.sockets)
+							})),
 					_List_Nil,
 					$elm$core$Platform$Cmd$none);
 			case 'OnClose':
@@ -12778,7 +12863,7 @@ var $author$project$Nats$updateWithEffects = F3(
 								$elm$core$Platform$Cmd$none);
 						}
 					},
-					state);
+					oState);
 			case 'OnError':
 				var sid = msg.a.sid;
 				var message = msg.a.message;
@@ -12796,68 +12881,71 @@ var $author$project$Nats$updateWithEffects = F3(
 							_List_Nil,
 							$elm$core$Platform$Cmd$none);
 					},
-					state);
+					oState);
 			case 'OnMessage':
 				var sid = msg.a.sid;
 				var message = msg.a.message;
-				var _v2 = A2($elm$core$Dict$get, sid, state.sockets);
+				var _v2 = A2($author$project$Nats$Internal$SocketStateCollection$findByID, sid, state.sockets);
 				if (_v2.$ === 'Nothing') {
-					return _Utils_Tuple3(state, _List_Nil, $elm$core$Platform$Cmd$none);
+					return _Utils_Tuple3(oState, _List_Nil, $elm$core$Platform$Cmd$none);
 				} else {
 					var socket = _v2.a;
-					var _v3 = A2(
-						$author$project$Nats$Internal$SocketState$receive,
-						A2(cfg.debugLog, 'receiving from ' + sid, message),
-						socket);
-					var socketN = _v3.a;
-					var msgs = _v3.b;
-					var operations = _v3.c;
-					return _Utils_Tuple3(
-						_Utils_update(
-							state,
-							{
-								sockets: A3($elm$core$Dict$insert, sid, socketN, state.sockets)
-							}),
-						msgs,
-						$elm$core$Platform$Cmd$batch(
-							A2(
-								$elm$core$List$map,
-								function (op) {
-									return A2(
-										$author$project$Nats$doSend,
-										cfg,
-										{
-											message: $author$project$Nats$Protocol$toString(op),
-											sid: sid
-										});
-								},
-								operations)));
+					var _v3 = cfg.fromPortMessage(message);
+					if (_v3.$ === 'Ok') {
+						var data = _v3.a;
+						var _v4 = A3($author$project$Nats$Internal$SocketState$receive, cfg, data, socket);
+						var socketN = _v4.a;
+						var msgs = _v4.b;
+						var operations = _v4.c;
+						return _Utils_Tuple3(
+							$author$project$Nats$State(
+								_Utils_update(
+									state,
+									{
+										sockets: A2($author$project$Nats$Internal$SocketStateCollection$insert, socketN, state.sockets)
+									})),
+							msgs,
+							$elm$core$Platform$Cmd$batch(
+								A2(
+									$elm$core$List$map,
+									function (op) {
+										return A2(
+											$author$project$Nats$doSend,
+											cfg,
+											{
+												message: cfg.toPortMessage(
+													cfg.write(op)),
+												sid: sid
+											});
+									},
+									operations)));
+					} else {
+						var err = _v3.a;
+						return _Utils_Tuple3(
+							oState,
+							_List_fromArray(
+								[
+									socket.onEvent(
+									$author$project$Nats$Events$SocketError(err))
+								]),
+							$elm$core$Platform$Cmd$none);
+					}
 				}
 			default:
 				var time = msg.a;
 				var msTime = $elm$time$Time$posixToMillis(time);
-				var _v4 = A3(
-					$elm$core$Dict$foldl,
-					F3(
-						function (sid, socket, _v5) {
-							var d = _v5.a;
-							var msgList = _v5.b;
-							var _v6 = A2($author$project$Nats$Internal$SocketState$handleTimeouts, msTime, socket);
-							var s = _v6.a;
-							var m = _v6.b;
-							return _Utils_Tuple2(
-								A3($elm$core$Dict$insert, sid, s, d),
-								A2($elm$core$List$append, m, msgList));
-						}),
-					_Utils_Tuple2($elm$core$Dict$empty, _List_Nil),
+				var _v5 = A2(
+					$author$project$Nats$Internal$SocketStateCollection$mapWithEffect,
+					$author$project$Nats$Internal$SocketState$handleTimeouts(msTime),
 					state.sockets);
-				var sockets = _v4.a;
-				var msgs = _v4.b;
+				var sockets = _v5.a;
+				var msgs = _v5.b;
 				return _Utils_Tuple3(
-					_Utils_update(
-						state,
-						{sockets: sockets, time: msTime}),
-					msgs,
+					$author$project$Nats$State(
+						_Utils_update(
+							state,
+							{sockets: sockets, time: msTime})),
+					$elm$core$List$concat(msgs),
 					$elm$core$Platform$Cmd$none);
 		}
 	});
@@ -12930,16 +13018,20 @@ var $author$project$Main$update = F2(
 						{nats: nats}),
 					$author$project$Nats$Effect$none,
 					natsCmd);
-			case 'OnOpen':
-				var info = msg.a;
-				return _Utils_Tuple3(
-					_Utils_update(
-						model,
-						{
-							serverInfo: $elm$core$Maybe$Just(info)
-						}),
-					$author$project$Nats$Effect$none,
-					$elm$core$Platform$Cmd$none);
+			case 'OnSocketEvent':
+				if (msg.a.$ === 'SocketOpen') {
+					var info = msg.a.a;
+					return _Utils_Tuple3(
+						_Utils_update(
+							model,
+							{
+								serverInfo: $elm$core$Maybe$Just(info)
+							}),
+						$author$project$Nats$Effect$none,
+						$elm$core$Platform$Cmd$none);
+				} else {
+					return _Utils_Tuple3(model, $author$project$Nats$Effect$none, $elm$core$Platform$Cmd$none);
+				}
 			case 'SubCompMsg':
 				var subcompMsg = msg.a;
 				var _v2 = A2($author$project$SubComp$update, subcompMsg, model.subcomp);
@@ -13421,4 +13513,4 @@ _Platform_export({'Main':{'init':$author$project$Main$main(
 			return $elm$json$Json$Decode$succeed(
 				{now: now});
 		},
-		A2($elm$json$Json$Decode$field, 'now', $elm$json$Json$Decode$int)))({"versions":{"elm":"0.19.1"},"types":{"message":"Main.Msg","aliases":{"Nats.Protocol.Message":{"args":[],"type":"{ subject : String.String, replyTo : String.String, data : String.String }"},"Nats.Msg":{"args":["msg"],"type":"Nats.Internal.Types.Msg msg"},"Nats.Protocol.ServerInfo":{"args":[],"type":"{ server_id : String.String, version : String.String, go : String.String, host : String.String, port_ : Basics.Int, auth_required : Basics.Bool, max_payload : Basics.Int }"},"Nats.PortsAPI.Message":{"args":[],"type":"{ sid : String.String, message : String.String }"}},"unions":{"Main.Msg":{"args":[],"tags":{"NoOp":[],"NatsMsg":["Nats.Msg Main.Msg"],"SubCompMsg":["SubComp.Msg"],"NatsConnect":["Nats.Protocol.ServerInfo"],"OnOpen":["Nats.Protocol.ServerInfo"],"Publish":[],"InputText":["String.String"],"SendRequest":[],"RequestError":[],"ReceiveResponse":["String.String"],"HandleRequest":["Nats.Protocol.Message"]}},"Basics.Bool":{"args":[],"tags":{"True":[],"False":[]}},"Basics.Int":{"args":[],"tags":{"Int":[]}},"Nats.Internal.Types.Msg":{"args":["msg"],"tags":{"OnOpen":["String.String"],"OnClose":["String.String"],"OnError":["Nats.PortsAPI.Message"],"OnMessage":["Nats.PortsAPI.Message"],"OnTime":["Time.Posix"]}},"SubComp.Msg":{"args":[],"tags":{"Subscribe":[],"Unsubscribe":[],"Receive":["Basics.Int","String.String"]}},"String.String":{"args":[],"tags":{"String":[]}},"Time.Posix":{"args":[],"tags":{"Posix":["Basics.Int"]}}}}})}});}(this));
+		A2($elm$json$Json$Decode$field, 'now', $elm$json$Json$Decode$int)))({"versions":{"elm":"0.19.1"},"types":{"message":"Main.Msg","aliases":{"Nats.Protocol.Message":{"args":["datatype"],"type":"{ subject : String.String, replyTo : String.String, size : Basics.Int, data : datatype }"},"Nats.Msg":{"args":["msg"],"type":"Nats.Internal.Types.Msg msg"},"Nats.Protocol.ServerInfo":{"args":[],"type":"{ server_id : String.String, version : String.String, go : String.String, host : String.String, port_ : Basics.Int, auth_required : Basics.Bool, max_payload : Basics.Int }"},"Nats.PortsAPI.Message":{"args":[],"type":"{ sid : String.String, message : String.String }"}},"unions":{"Main.Msg":{"args":[],"tags":{"NoOp":[],"NatsMsg":["Nats.Msg Main.Msg"],"SubCompMsg":["SubComp.Msg"],"NatsConnect":["Nats.Protocol.ServerInfo"],"OnSocketEvent":["Nats.Events.SocketEvent"],"Publish":[],"InputText":["String.String"],"SendRequest":[],"RequestError":[],"ReceiveResponse":["String.String"],"HandleRequest":["Nats.Protocol.Message String.String"]}},"Basics.Bool":{"args":[],"tags":{"True":[],"False":[]}},"Basics.Int":{"args":[],"tags":{"Int":[]}},"Nats.Internal.Types.Msg":{"args":["msg"],"tags":{"OnOpen":["String.String"],"OnClose":["String.String"],"OnError":["Nats.PortsAPI.Message"],"OnMessage":["Nats.PortsAPI.Message"],"OnTime":["Time.Posix"]}},"SubComp.Msg":{"args":[],"tags":{"Subscribe":[],"Unsubscribe":[],"Receive":["Basics.Int","String.String"]}},"Nats.Events.SocketEvent":{"args":[],"tags":{"SocketOpen":["Nats.Protocol.ServerInfo"],"SocketClose":[],"SocketError":["String.String"]}},"String.String":{"args":[],"tags":{"String":[]}},"Time.Posix":{"args":[],"tags":{"Posix":["Basics.Int"]}}}}})}});}(this));

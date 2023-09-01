@@ -2,7 +2,7 @@ module Nats.Socket exposing
     ( Status(..), Socket
     , new, setDefault
     , withAuthToken, withUserPass
-    , onOpen, onClose, onError
+    , connectOptions
     )
 
 {-| A socket defines a connection to a nats server
@@ -16,21 +16,17 @@ module Nats.Socket exposing
 
 @docs withAuthToken, withUserPass
 
-
-# Events
-
-@docs onOpen, onClose, onError
-
 -}
 
+import Bytes exposing (Bytes)
 import Nats.Internal.Types as Types
-import Nats.Protocol exposing (ServerInfo)
+import Nats.Protocol exposing (ConnectOptions, ServerInfo)
 
 
 {-| Representation of a Nats connection properties
 -}
-type alias Socket msg =
-    Types.Socket msg
+type alias Socket =
+    Types.Socket
 
 
 {-| Possible statuses of a socket
@@ -50,62 +46,46 @@ The 'sid' can be used in various places of the API to choose which socket
 should handle an effect or a subscription.
 
 -}
-new : String -> String -> Socket msg
+new : String -> String -> Socket
 new sid url =
     Types.Socket
         { id = sid
         , default = False
         , url = url
-        , connectOptions =
-            { verbose = False
-            , pedantic = False
-            , auth_token = Nothing
-            , user = Nothing
-            , pass = Nothing
-            , name = Just "nats-rpc/elm-nats"
-            , lang = "Elm"
-            , version = "0.0.0"
-            , protocol = 0
-            }
-        , onOpen = Nothing
-        , onError = Nothing
-        , onClose = Nothing
         }
+
+
+connectOptions : String -> String -> ConnectOptions
+connectOptions name version =
+    { name = Just name
+    , verbose = False
+    , pedantic = False
+    , auth_token = Nothing
+    , user = Nothing
+    , pass = Nothing
+    , protocol = 0
+    , version = version
+    , lang = "elm"
+    }
 
 
 {-| Authenticate with a username and a password
 -}
-withUserPass : String -> String -> Socket msg -> Socket msg
-withUserPass user pass (Types.Socket socket) =
-    let
-        connectOptions =
-            socket.connectOptions
-    in
-    Types.Socket
-        { socket
-            | connectOptions =
-                { connectOptions
-                    | user = Just user
-                    , pass = Just pass
-                }
-        }
+withUserPass : String -> String -> ConnectOptions -> ConnectOptions
+withUserPass user pass options =
+    { options
+        | user = Just user
+        , pass = Just pass
+    }
 
 
 {-| Authenticate with a auth token
 -}
-withAuthToken : String -> Socket msg -> Socket msg
-withAuthToken auth_token (Types.Socket socket) =
-    let
-        connectOptions =
-            socket.connectOptions
-    in
-    Types.Socket
-        { socket
-            | connectOptions =
-                { connectOptions
-                    | auth_token = Just auth_token
-                }
-        }
+withAuthToken : String -> ConnectOptions -> ConnectOptions
+withAuthToken auth_token options =
+    { options
+        | auth_token = Just auth_token
+    }
 
 
 {-| Set this socket as the default one
@@ -117,44 +97,9 @@ designate an arbitrary socket as the default one.
 If several sockets have this flag, one of them will be picked
 
 -}
-setDefault : Socket msg -> Socket msg
+setDefault : Socket -> Socket
 setDefault (Types.Socket socket) =
     Types.Socket
         { socket
             | default = True
-        }
-
-
-{-| Set a handler message for when the connection is opened
-
-At the moment the message is received, the authentication may not be complete
-yet, in which case the connection will be closed with an error very quickly after
-
--}
-onOpen : (ServerInfo -> msg) -> Socket msg -> Socket msg
-onOpen msg (Types.Socket socket) =
-    Types.Socket
-        { socket
-            | onOpen = Just msg
-        }
-
-
-{-| Set a handler message for when the connection is properly closed
--}
-onClose : msg -> Socket msg -> Socket msg
-onClose msg (Types.Socket socket) =
-    Types.Socket
-        { socket
-            | onClose = Just msg
-        }
-
-
-{-| Set a handler message for when the connection is closed with error of cannot
-be opened at all
--}
-onError : (String -> msg) -> Socket msg -> Socket msg
-onError msg (Types.Socket socket) =
-    Types.Socket
-        { socket
-            | onError = Just msg
         }

@@ -28,19 +28,19 @@ init =
     }
 
 
-receive : Int -> Message -> Msg
+receive : Int -> Message String -> Msg
 receive n natsMessage =
     Receive n natsMessage.data
 
 
-natsSubscriptions : Model -> Nats.Sub Msg
+natsSubscriptions : Model -> Nats.Sub String Msg
 natsSubscriptions model =
     List.range 0 (model.subCounter - 1)
         |> List.map (\n -> receive n |> Nats.subscribe "test.subject")
         |> Nats.Sub.batch
 
 
-update : Msg -> Model -> ( Model, Nats.Effect Msg, Cmd Msg )
+update : Msg -> Model -> ( Model, Nats.Effect String Msg, Cmd Msg )
 update msg model =
     case msg of
         Subscribe ->

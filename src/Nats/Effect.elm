@@ -14,29 +14,23 @@ import Nats.Internal.Types as Types
 
 {-| Tell nats there are no effect
 -}
-none : Effect msg
+none : Effect datatype msg
 none =
     Types.NoEffect
 
 
 {-| Batch several nats effect, pretty much like Cmd.batch
 -}
-batch : List (Effect msg) -> Effect msg
+batch : List (Effect datatype msg) -> Effect datatype msg
 batch =
     Types.BatchEffect
 
 
 {-| Transform the messages produced by an effect
 -}
-map : (a -> b) -> Effect a -> Effect b
+map : (a -> b) -> Effect datatype a -> Effect datatype b
 map fn effect =
     case effect of
-        Types.Open socket ->
-            Types.Open <| Types.mapSocket fn socket
-
-        Types.Close id ->
-            Types.Close id
-
         Types.Pub pub ->
             Types.Pub pub
 
@@ -59,15 +53,9 @@ map fn effect =
 
 {-| Set / change the socket on which the effect should apply
 -}
-onSocket : String -> Effect msg -> Effect msg
+onSocket : String -> Effect datatype msg -> Effect datatype msg
 onSocket sid effect =
     case effect of
-        Types.Open socket ->
-            Types.Open socket
-
-        Types.Close _ ->
-            Types.Close sid
-
         Types.Pub props ->
             Types.Pub { props | sid = Just sid }
 

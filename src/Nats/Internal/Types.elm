@@ -3,48 +3,24 @@ module Nats.Internal.Types exposing
     , Msg(..)
     , Socket(..)
     , SocketProps
-    , Sub(..)
-    , mapSocket
     )
 
 import Nats.Errors exposing (Timeout)
+import Nats.Events exposing (SocketEvent)
 import Nats.PortsAPI as PortsAPI
 import Nats.Protocol as Protocol exposing (ConnectOptions, ServerInfo)
 import Time
 
 
-type alias SocketProps msg =
+type alias SocketProps =
     { id : String
     , default : Bool
     , url : String
-    , connectOptions : ConnectOptions
-    , onOpen : Maybe (ServerInfo -> msg)
-    , onError : Maybe (String -> msg)
-    , onClose : Maybe msg
     }
 
 
-type Socket msg
-    = Socket (SocketProps msg)
-
-
-mapSocket : (a -> b) -> Socket a -> Socket b
-mapSocket fn (Socket socket) =
-    Socket
-        { id = socket.id
-        , default = socket.default
-        , url = socket.url
-        , connectOptions = socket.connectOptions
-        , onOpen =
-            socket.onOpen
-                |> Maybe.map ((<<) fn)
-        , onError =
-            socket.onError
-                |> Maybe.map ((<<) fn)
-        , onClose =
-            socket.onClose
-                |> Maybe.map fn
-        }
+type Socket
+    = Socket SocketProps
 
 
 type Msg msg
@@ -55,19 +31,8 @@ type Msg msg
     | OnTime Time.Posix
 
 
-type Effect msg
-    = Pub { sid : Maybe String, subject : String, replyTo : Maybe String, message : String }
-    | Open (Socket msg)
-    | Close String
-    | Request { sid : Maybe String, subject : String, group : String, message : String, timeout : Maybe Int, onResponse : Result Timeout String -> msg }
+type Effect datatype msg
+    = Pub { sid : Maybe String, subject : String, replyTo : Maybe String, message : datatype }
+    | Request { sid : Maybe String, subject : String, group : String, message : datatype, timeout : Maybe Int, onResponse : Result Timeout datatype -> msg }
     | NoEffect
-    | BatchEffect (List (Effect msg))
-
-
-{-| A way of telling Nats : "Please subscribe to this subject and send
-back messages to me".
--}
-type Sub msg
-    = Subscribe { sid : Maybe String, subject : String, group : String, onMessage : Protocol.Message -> msg }
-    | BatchSub (List (Sub msg))
-    | NoSub
+    | BatchEffect (List (Effect datatype msg))

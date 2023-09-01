@@ -5,6 +5,7 @@ import Html exposing (Html, a, button, div, h1, h3, h4, img, input, label, li, p
 import Html.Attributes exposing (class, href, placeholder, src, style, type_, width)
 import Html.Events exposing (onClick, onInput)
 import Nats
+import Nats.Events
 import Nats.Effect
 import Nats.Config
 import Nats.Errors exposing (Timeout)
@@ -42,9 +43,9 @@ port natsOnMessage : (Nats.PortsAPI.Message -> msg) -> Sub msg
 port natsSend : Nats.PortsAPI.Message -> Cmd msg
 
 
-natsConfig : Nats.Config.Config Msg
+natsConfig : Nats.Config.Config String Msg
 natsConfig =
-    Nats.Config.init NatsMsg
+    Nats.Config.string NatsMsg
         { open = natsOpen
         , close = natsClose
         , onOpen = natsOnOpen
@@ -62,7 +63,8 @@ natsConfig =
 
 
 type alias Model =
-    { nats : Nats.State Msg
+    { nats : Nats.State String Msg
+    , socket : Nats.Socket.Socket
     , serverInfo : Maybe Nats.Protocol.ServerInfo
     , subcomp : SubComp.Model
     , inputText : String
@@ -77,21 +79,18 @@ init flags =
             Nats.init ( Random.initialSeed flags.now )
             (Time.millisToPosix flags.now)
     in
-    { nats = nats
+    ({ nats = nats
+    , socket = Nats.Socket.new "0" "ws://localhost:8087"
     , serverInfo = Nothing
     , subcomp = SubComp.init
     , inputText = ""
     , response = Nothing
     }
-        |> applyNatsEffect
-            (Nats.Socket.new "0" "ws://localhost:8087"
-                |> Nats.Socket.withUserPass "test" "test"
-                |> Nats.Socket.onOpen OnOpen
-                |> Nats.open
-            )
+    , Cmd.none
+    )
 
 
-applyNatsEffect : Nats.Effect Msg -> Model -> ( Model, Cmd Msg )
+applyNatsEffect : Nats.Effect String Msg -> Model -> ( Model, Cmd Msg )
 applyNatsEffect effect model =
     let
         ( nats, cmd ) =
@@ -112,13 +111,13 @@ type Msg
     | NatsMsg (Nats.Msg Msg)
     | SubCompMsg SubComp.Msg
     | NatsConnect Nats.Protocol.ServerInfo
-    | OnOpen Nats.Protocol.ServerInfo
+    | OnSocketEvent Nats.Events.SocketEvent
     | Publish
     | InputText String
     | SendRequest
     | RequestError
     | ReceiveResponse String
-    | HandleRequest Nats.Protocol.Message
+    | HandleRequest (Nats.Protocol.Message String)
 
 
 receiveResponse : Result Timeout String -> Msg
@@ -131,13 +130,20 @@ receiveResponse result =
             RequestError
 
 
-natsSubscriptions : Model -> Nats.Sub Msg
+natsSubscriptions : Model -> Nats.Sub String Msg
 natsSubscriptions model =
     Nats.Sub.batch
     [
     SubComp.natsSubscriptions model.subcomp
         |> Nats.Sub.map SubCompMsg
         , Nats.groupSubscribe "say.hello.to.me" "server" HandleRequest
+        , Nats.connect
+        (Nats.Socket.connectOptions "Demo" "0.1"
+                            |> Nats.Socket.withUserPass "test" "test"
+            )
+        model.socket
+        OnSocketEvent
+        
         ]
 
 
@@ -153,7 +159,7 @@ updateWrapper msg model =
     ( model2, Cmd.batch [ cmd, natsCmd ] )
 
 
-update : Msg -> Model -> ( Model, Nats.Effect Msg, Cmd Msg )
+update : Msg -> Model -> ( Model, Nats.Effect String Msg, Cmd Msg )
 update msg model =
     case msg of
         NatsMsg natsMsg ->
@@ -166,10 +172,18 @@ update msg model =
             , natsCmd
             )
 
-        OnOpen info ->
-            ( { model
-                | serverInfo = Just info
+        OnSocketEvent (Nats.Events.SocketOpen info) ->
+            (
+                { model
+              | serverInfo = Just info
               }
+            , Nats.Effect.none
+            , Cmd.none
+            )
+
+        OnSocketEvent _ ->
+            (
+              model
             , Nats.Effect.none
             , Cmd.none
             )
@@ -380,4 +394,4 @@ main =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    Nats.connect natsConfig model.nats
+    Nats.subscriptions natsConfig model.nats
