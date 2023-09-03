@@ -1,5 +1,6 @@
 module Nats.Internal.SocketState exposing
     ( SocketState
+    , ackCONNECT
     , addRequest
     , addSubscription
     , finalizeSubscriptions
@@ -148,44 +149,49 @@ addSubscriptionHelper subType subject group onMessage state =
 
 finalizeSubscriptions : SocketState datatype msg -> ( SocketState datatype msg, List (Protocol.Operation datatype) )
 finalizeSubscriptions state =
-    let
-        nextSubscriptions =
-            state.nextSubscriptions
-                |> Dict.values
-    in
-    ( { state
-        | nextSubscriptions =
-            state.nextSubscriptions
-                |> Dict.filter (\_ -> isRequest)
-        , activeSubscriptions = nextSubscriptions
-      }
-    , (nextSubscriptions
-        |> List.filterMap
-            (\sub ->
-                case getSubscriptionByID sub.id state of
-                    Nothing ->
-                        Just <| Protocol.SUB sub.subject sub.group sub.id
-
-                    Just _ ->
-                        Nothing
-            )
-      )
-        ++ (state.activeSubscriptions
+    case state.status of
+        Socket.Connected ->
+            let
+                nextSubscriptions =
+                    state.nextSubscriptions
+                        |> Dict.values
+            in
+            ( { state
+                | nextSubscriptions =
+                    state.nextSubscriptions
+                        |> Dict.filter (\_ -> isRequest)
+                , activeSubscriptions = nextSubscriptions
+              }
+            , (nextSubscriptions
                 |> List.filterMap
                     (\sub ->
-                        case
-                            nextSubscriptions
-                                |> List.filter (\next -> next.id == sub.id)
-                                |> List.head
-                        of
+                        case getSubscriptionByID sub.id state of
                             Nothing ->
-                                Just <| Protocol.UNSUB sub.id 0
+                                Just <| Protocol.SUB sub.subject sub.group sub.id
 
                             Just _ ->
                                 Nothing
                     )
-           )
-    )
+              )
+                ++ (state.activeSubscriptions
+                        |> List.filterMap
+                            (\sub ->
+                                case
+                                    nextSubscriptions
+                                        |> List.filter (\next -> next.id == sub.id)
+                                        |> List.head
+                                of
+                                    Nothing ->
+                                        Just <| Protocol.UNSUB sub.id 0
+
+                                    Just _ ->
+                                        Nothing
+                            )
+                   )
+            )
+
+        _ ->
+            ( state, [] )
 
 
 addRequest :
@@ -280,6 +286,11 @@ receive cfg data state =
             receiveOperation op parseState
 
 
+ackCONNECT : SocketState datatype msg -> SocketState datatype msg
+ackCONNECT =
+    setStatus Socket.Connected
+
+
 receiveOperation : Protocol.Operation datatype -> SocketState datatype msg -> ( SocketState datatype msg, List msg, List (Protocol.Operation datatype) )
 receiveOperation operation state =
     case operation of
@@ -287,12 +298,10 @@ receiveOperation operation state =
             ( { state
                 | serverInfo = Just serverInfo
               }
+                |> setStatus Socket.Connecting
             , [ Events.SocketOpen serverInfo |> state.onEvent ]
-            , Protocol.CONNECT state.connectOptions
-                :: (state.activeSubscriptions
-                        |> List.map (\sub -> Protocol.SUB sub.subject sub.group sub.id)
-                   )
-                |> List.reverse
+            , [ Protocol.CONNECT state.connectOptions
+              ]
             )
 
         Protocol.PING ->

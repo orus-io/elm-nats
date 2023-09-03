@@ -35,6 +35,8 @@ type Status
     = Undefined
     | Opening
     | Opened
+    | Connecting
+    | Connected
     | Closing
     | Closed
     | Error String

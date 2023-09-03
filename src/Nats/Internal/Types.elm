@@ -26,8 +26,9 @@ type Socket
 type Msg msg
     = OnOpen String
     | OnClose String
-    | OnError PortsAPI.Message
+    | OnError { sid : String, message : String }
     | OnMessage PortsAPI.Message
+    | OnAck PortsAPI.Ack
     | OnTime Time.Posix
 
 

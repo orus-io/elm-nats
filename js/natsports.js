@@ -4,12 +4,17 @@ function setupNatsPorts(app) {
     app.ports.natsOpen.subscribe(function(data) {
         const sid = data[0]
         const url = data[1]
+        const mode = data[2]
 
         try {
             let socket = new WebSocket(url);
 
             socket.onopen = function(event) {
-                sockets[sid] = socket;
+                sockets[sid] = {
+                    socket: socket,
+                    mode: mode
+                };
+                console.log("opened")
                 app.ports.natsOnOpen.send(sid);
             };
 
@@ -30,9 +35,16 @@ function setupNatsPorts(app) {
             socket.onmessage = function(event) {
                 var reader = new FileReader();
                 reader.onload = function () {
+                    let message = reader.result
+                    console.log("received", message)
+                    if (mode == "binary") {
+                        message = btoa(message)
+                        console.log("b64", message)
+                    }
                     app.ports.natsOnMessage.send(
                         { sid: sid
-                        , message : reader.result
+                        , ack : null
+                        , message : message
                         }
                     );
                 };
@@ -47,10 +59,22 @@ function setupNatsPorts(app) {
         const sid = data.sid;
 
         const socket = sockets[sid];
+        console.log("natsSend", sid, socket, data.ack);
 
         if (socket) {
-            console.log("sending", data.message);
-            socket.send(data.message);
+            let message = data.message;
+            if (socket.mode == "binary") {
+                message = atob(message)
+            }
+            console.log("sending", message);
+            socket.socket.send(message);
+            if (data.ack !== null) {
+                app.ports.natsOnAck.send(
+                    { sid : sid
+                    , ack : data.ack
+                    }
+                )
+            }
         }
     });
 

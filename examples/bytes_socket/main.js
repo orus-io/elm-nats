@@ -4955,6 +4955,184 @@ function _Browser_load(url)
 }
 
 
+// BYTES
+
+function _Bytes_width(bytes)
+{
+	return bytes.byteLength;
+}
+
+var _Bytes_getHostEndianness = F2(function(le, be)
+{
+	return _Scheduler_binding(function(callback)
+	{
+		callback(_Scheduler_succeed(new Uint8Array(new Uint32Array([1]))[0] === 1 ? le : be));
+	});
+});
+
+
+// ENCODERS
+
+function _Bytes_encode(encoder)
+{
+	var mutableBytes = new DataView(new ArrayBuffer($elm$bytes$Bytes$Encode$getWidth(encoder)));
+	$elm$bytes$Bytes$Encode$write(encoder)(mutableBytes)(0);
+	return mutableBytes;
+}
+
+
+// SIGNED INTEGERS
+
+var _Bytes_write_i8  = F3(function(mb, i, n) { mb.setInt8(i, n); return i + 1; });
+var _Bytes_write_i16 = F4(function(mb, i, n, isLE) { mb.setInt16(i, n, isLE); return i + 2; });
+var _Bytes_write_i32 = F4(function(mb, i, n, isLE) { mb.setInt32(i, n, isLE); return i + 4; });
+
+
+// UNSIGNED INTEGERS
+
+var _Bytes_write_u8  = F3(function(mb, i, n) { mb.setUint8(i, n); return i + 1 ;});
+var _Bytes_write_u16 = F4(function(mb, i, n, isLE) { mb.setUint16(i, n, isLE); return i + 2; });
+var _Bytes_write_u32 = F4(function(mb, i, n, isLE) { mb.setUint32(i, n, isLE); return i + 4; });
+
+
+// FLOATS
+
+var _Bytes_write_f32 = F4(function(mb, i, n, isLE) { mb.setFloat32(i, n, isLE); return i + 4; });
+var _Bytes_write_f64 = F4(function(mb, i, n, isLE) { mb.setFloat64(i, n, isLE); return i + 8; });
+
+
+// BYTES
+
+var _Bytes_write_bytes = F3(function(mb, offset, bytes)
+{
+	for (var i = 0, len = bytes.byteLength, limit = len - 4; i <= limit; i += 4)
+	{
+		mb.setUint32(offset + i, bytes.getUint32(i));
+	}
+	for (; i < len; i++)
+	{
+		mb.setUint8(offset + i, bytes.getUint8(i));
+	}
+	return offset + len;
+});
+
+
+// STRINGS
+
+function _Bytes_getStringWidth(string)
+{
+	for (var width = 0, i = 0; i < string.length; i++)
+	{
+		var code = string.charCodeAt(i);
+		width +=
+			(code < 0x80) ? 1 :
+			(code < 0x800) ? 2 :
+			(code < 0xD800 || 0xDBFF < code) ? 3 : (i++, 4);
+	}
+	return width;
+}
+
+var _Bytes_write_string = F3(function(mb, offset, string)
+{
+	for (var i = 0; i < string.length; i++)
+	{
+		var code = string.charCodeAt(i);
+		offset +=
+			(code < 0x80)
+				? (mb.setUint8(offset, code)
+				, 1
+				)
+				:
+			(code < 0x800)
+				? (mb.setUint16(offset, 0xC080 /* 0b1100000010000000 */
+					| (code >>> 6 & 0x1F /* 0b00011111 */) << 8
+					| code & 0x3F /* 0b00111111 */)
+				, 2
+				)
+				:
+			(code < 0xD800 || 0xDBFF < code)
+				? (mb.setUint16(offset, 0xE080 /* 0b1110000010000000 */
+					| (code >>> 12 & 0xF /* 0b00001111 */) << 8
+					| code >>> 6 & 0x3F /* 0b00111111 */)
+				, mb.setUint8(offset + 2, 0x80 /* 0b10000000 */
+					| code & 0x3F /* 0b00111111 */)
+				, 3
+				)
+				:
+			(code = (code - 0xD800) * 0x400 + string.charCodeAt(++i) - 0xDC00 + 0x10000
+			, mb.setUint32(offset, 0xF0808080 /* 0b11110000100000001000000010000000 */
+				| (code >>> 18 & 0x7 /* 0b00000111 */) << 24
+				| (code >>> 12 & 0x3F /* 0b00111111 */) << 16
+				| (code >>> 6 & 0x3F /* 0b00111111 */) << 8
+				| code & 0x3F /* 0b00111111 */)
+			, 4
+			);
+	}
+	return offset;
+});
+
+
+// DECODER
+
+var _Bytes_decode = F2(function(decoder, bytes)
+{
+	try {
+		return $elm$core$Maybe$Just(A2(decoder, bytes, 0).b);
+	} catch(e) {
+		return $elm$core$Maybe$Nothing;
+	}
+});
+
+var _Bytes_read_i8  = F2(function(      bytes, offset) { return _Utils_Tuple2(offset + 1, bytes.getInt8(offset)); });
+var _Bytes_read_i16 = F3(function(isLE, bytes, offset) { return _Utils_Tuple2(offset + 2, bytes.getInt16(offset, isLE)); });
+var _Bytes_read_i32 = F3(function(isLE, bytes, offset) { return _Utils_Tuple2(offset + 4, bytes.getInt32(offset, isLE)); });
+var _Bytes_read_u8  = F2(function(      bytes, offset) { return _Utils_Tuple2(offset + 1, bytes.getUint8(offset)); });
+var _Bytes_read_u16 = F3(function(isLE, bytes, offset) { return _Utils_Tuple2(offset + 2, bytes.getUint16(offset, isLE)); });
+var _Bytes_read_u32 = F3(function(isLE, bytes, offset) { return _Utils_Tuple2(offset + 4, bytes.getUint32(offset, isLE)); });
+var _Bytes_read_f32 = F3(function(isLE, bytes, offset) { return _Utils_Tuple2(offset + 4, bytes.getFloat32(offset, isLE)); });
+var _Bytes_read_f64 = F3(function(isLE, bytes, offset) { return _Utils_Tuple2(offset + 8, bytes.getFloat64(offset, isLE)); });
+
+var _Bytes_read_bytes = F3(function(len, bytes, offset)
+{
+	return _Utils_Tuple2(offset + len, new DataView(bytes.buffer, bytes.byteOffset + offset, len));
+});
+
+var _Bytes_read_string = F3(function(len, bytes, offset)
+{
+	var string = '';
+	var end = offset + len;
+	for (; offset < end;)
+	{
+		var byte = bytes.getUint8(offset++);
+		string +=
+			(byte < 128)
+				? String.fromCharCode(byte)
+				:
+			((byte & 0xE0 /* 0b11100000 */) === 0xC0 /* 0b11000000 */)
+				? String.fromCharCode((byte & 0x1F /* 0b00011111 */) << 6 | bytes.getUint8(offset++) & 0x3F /* 0b00111111 */)
+				:
+			((byte & 0xF0 /* 0b11110000 */) === 0xE0 /* 0b11100000 */)
+				? String.fromCharCode(
+					(byte & 0xF /* 0b00001111 */) << 12
+					| (bytes.getUint8(offset++) & 0x3F /* 0b00111111 */) << 6
+					| bytes.getUint8(offset++) & 0x3F /* 0b00111111 */
+				)
+				:
+				(byte =
+					((byte & 0x7 /* 0b00000111 */) << 18
+						| (bytes.getUint8(offset++) & 0x3F /* 0b00111111 */) << 12
+						| (bytes.getUint8(offset++) & 0x3F /* 0b00111111 */) << 6
+						| bytes.getUint8(offset++) & 0x3F /* 0b00111111 */
+					) - 0x10000
+				, String.fromCharCode(Math.floor(byte / 0x400) + 0xD800, byte % 0x400 + 0xDC00)
+				);
+	}
+	return _Utils_Tuple2(offset, string);
+});
+
+var _Bytes_decodeFailure = F2(function() { throw 0; });
+
+
 // CREATE
 
 var _Regex_never = /.^/;
@@ -10995,65 +11173,749 @@ var $author$project$Main$init = function (flags) {
 var $author$project$Main$NatsMsg = function (a) {
 	return {$: 'NatsMsg', a: a};
 };
-var $elm$core$Debug$log = _Debug_log;
-var $author$project$Main$natsClose = _Platform_outgoingPort('natsClose', $elm$json$Json$Encode$string);
-var $author$project$Main$natsOnClose = _Platform_incomingPort('natsOnClose', $elm$json$Json$Decode$string);
-var $author$project$Main$natsOnError = _Platform_incomingPort(
-	'natsOnError',
-	A2(
-		$elm$json$Json$Decode$andThen,
-		function (sid) {
-			return A2(
-				$elm$json$Json$Decode$andThen,
-				function (message) {
-					return $elm$json$Json$Decode$succeed(
-						{message: message, sid: sid});
-				},
-				A2($elm$json$Json$Decode$field, 'message', $elm$json$Json$Decode$string));
-		},
-		A2($elm$json$Json$Decode$field, 'sid', $elm$json$Json$Decode$string)));
-var $author$project$Main$natsOnMessage = _Platform_incomingPort(
-	'natsOnMessage',
-	A2(
-		$elm$json$Json$Decode$andThen,
-		function (sid) {
-			return A2(
-				$elm$json$Json$Decode$andThen,
-				function (message) {
-					return $elm$json$Json$Decode$succeed(
-						{message: message, sid: sid});
-				},
-				A2($elm$json$Json$Decode$field, 'message', $elm$json$Json$Decode$string));
-		},
-		A2($elm$json$Json$Decode$field, 'sid', $elm$json$Json$Decode$string)));
-var $author$project$Main$natsOnOpen = _Platform_incomingPort('natsOnOpen', $elm$json$Json$Decode$string);
-var $author$project$Main$natsOpen = _Platform_outgoingPort(
-	'natsOpen',
-	function ($) {
-		var a = $.a;
-		var b = $.b;
-		return A2(
-			$elm$json$Json$Encode$list,
-			$elm$core$Basics$identity,
-			_List_fromArray(
-				[
-					$elm$json$Json$Encode$string(a),
-					$elm$json$Json$Encode$string(b)
-				]));
+var $chelovek0v$bbase64$Base64$Decode$Decoder = function (a) {
+	return {$: 'Decoder', a: a};
+};
+var $elm$bytes$Bytes$Encode$getWidth = function (builder) {
+	switch (builder.$) {
+		case 'I8':
+			return 1;
+		case 'I16':
+			return 2;
+		case 'I32':
+			return 4;
+		case 'U8':
+			return 1;
+		case 'U16':
+			return 2;
+		case 'U32':
+			return 4;
+		case 'F32':
+			return 4;
+		case 'F64':
+			return 8;
+		case 'Seq':
+			var w = builder.a;
+			return w;
+		case 'Utf8':
+			var w = builder.a;
+			return w;
+		default:
+			var bs = builder.a;
+			return _Bytes_width(bs);
+	}
+};
+var $elm$bytes$Bytes$LE = {$: 'LE'};
+var $elm$bytes$Bytes$Encode$write = F3(
+	function (builder, mb, offset) {
+		switch (builder.$) {
+			case 'I8':
+				var n = builder.a;
+				return A3(_Bytes_write_i8, mb, offset, n);
+			case 'I16':
+				var e = builder.a;
+				var n = builder.b;
+				return A4(
+					_Bytes_write_i16,
+					mb,
+					offset,
+					n,
+					_Utils_eq(e, $elm$bytes$Bytes$LE));
+			case 'I32':
+				var e = builder.a;
+				var n = builder.b;
+				return A4(
+					_Bytes_write_i32,
+					mb,
+					offset,
+					n,
+					_Utils_eq(e, $elm$bytes$Bytes$LE));
+			case 'U8':
+				var n = builder.a;
+				return A3(_Bytes_write_u8, mb, offset, n);
+			case 'U16':
+				var e = builder.a;
+				var n = builder.b;
+				return A4(
+					_Bytes_write_u16,
+					mb,
+					offset,
+					n,
+					_Utils_eq(e, $elm$bytes$Bytes$LE));
+			case 'U32':
+				var e = builder.a;
+				var n = builder.b;
+				return A4(
+					_Bytes_write_u32,
+					mb,
+					offset,
+					n,
+					_Utils_eq(e, $elm$bytes$Bytes$LE));
+			case 'F32':
+				var e = builder.a;
+				var n = builder.b;
+				return A4(
+					_Bytes_write_f32,
+					mb,
+					offset,
+					n,
+					_Utils_eq(e, $elm$bytes$Bytes$LE));
+			case 'F64':
+				var e = builder.a;
+				var n = builder.b;
+				return A4(
+					_Bytes_write_f64,
+					mb,
+					offset,
+					n,
+					_Utils_eq(e, $elm$bytes$Bytes$LE));
+			case 'Seq':
+				var bs = builder.b;
+				return A3($elm$bytes$Bytes$Encode$writeSequence, bs, mb, offset);
+			case 'Utf8':
+				var s = builder.b;
+				return A3(_Bytes_write_string, mb, offset, s);
+			default:
+				var bs = builder.a;
+				return A3(_Bytes_write_bytes, mb, offset, bs);
+		}
 	});
-var $author$project$Main$natsSend = _Platform_outgoingPort(
-	'natsSend',
-	function ($) {
-		return $elm$json$Json$Encode$object(
-			_List_fromArray(
-				[
+var $elm$bytes$Bytes$Encode$writeSequence = F3(
+	function (builders, mb, offset) {
+		writeSequence:
+		while (true) {
+			if (!builders.b) {
+				return offset;
+			} else {
+				var b = builders.a;
+				var bs = builders.b;
+				var $temp$builders = bs,
+					$temp$mb = mb,
+					$temp$offset = A3($elm$bytes$Bytes$Encode$write, b, mb, offset);
+				builders = $temp$builders;
+				mb = $temp$mb;
+				offset = $temp$offset;
+				continue writeSequence;
+			}
+		}
+	});
+var $elm$bytes$Bytes$Encode$encode = _Bytes_encode;
+var $elm$bytes$Bytes$Encode$Seq = F2(
+	function (a, b) {
+		return {$: 'Seq', a: a, b: b};
+	});
+var $elm$bytes$Bytes$Encode$getWidths = F2(
+	function (width, builders) {
+		getWidths:
+		while (true) {
+			if (!builders.b) {
+				return width;
+			} else {
+				var b = builders.a;
+				var bs = builders.b;
+				var $temp$width = width + $elm$bytes$Bytes$Encode$getWidth(b),
+					$temp$builders = bs;
+				width = $temp$width;
+				builders = $temp$builders;
+				continue getWidths;
+			}
+		}
+	});
+var $elm$bytes$Bytes$Encode$sequence = function (builders) {
+	return A2(
+		$elm$bytes$Bytes$Encode$Seq,
+		A2($elm$bytes$Bytes$Encode$getWidths, 0, builders),
+		builders);
+};
+var $chelovek0v$bbase64$Base64$Decode$encodeBytes = function (encoders) {
+	return $elm$bytes$Bytes$Encode$encode(
+		$elm$bytes$Bytes$Encode$sequence(
+			$elm$core$List$reverse(encoders)));
+};
+var $elm$core$Result$andThen = F2(
+	function (callback, result) {
+		if (result.$ === 'Ok') {
+			var value = result.a;
+			return callback(value);
+		} else {
+			var msg = result.a;
+			return $elm$core$Result$Err(msg);
+		}
+	});
+var $chelovek0v$bbase64$Base64$Table$charToCodeMap = $elm$core$Dict$fromList(
+	_List_fromArray(
+		[
+			_Utils_Tuple2('A', 0),
+			_Utils_Tuple2('B', 1),
+			_Utils_Tuple2('C', 2),
+			_Utils_Tuple2('D', 3),
+			_Utils_Tuple2('E', 4),
+			_Utils_Tuple2('F', 5),
+			_Utils_Tuple2('G', 6),
+			_Utils_Tuple2('H', 7),
+			_Utils_Tuple2('I', 8),
+			_Utils_Tuple2('J', 9),
+			_Utils_Tuple2('K', 10),
+			_Utils_Tuple2('L', 11),
+			_Utils_Tuple2('M', 12),
+			_Utils_Tuple2('N', 13),
+			_Utils_Tuple2('O', 14),
+			_Utils_Tuple2('P', 15),
+			_Utils_Tuple2('Q', 16),
+			_Utils_Tuple2('R', 17),
+			_Utils_Tuple2('S', 18),
+			_Utils_Tuple2('T', 19),
+			_Utils_Tuple2('U', 20),
+			_Utils_Tuple2('V', 21),
+			_Utils_Tuple2('W', 22),
+			_Utils_Tuple2('X', 23),
+			_Utils_Tuple2('Y', 24),
+			_Utils_Tuple2('Z', 25),
+			_Utils_Tuple2('a', 26),
+			_Utils_Tuple2('b', 27),
+			_Utils_Tuple2('c', 28),
+			_Utils_Tuple2('d', 29),
+			_Utils_Tuple2('e', 30),
+			_Utils_Tuple2('f', 31),
+			_Utils_Tuple2('g', 32),
+			_Utils_Tuple2('h', 33),
+			_Utils_Tuple2('i', 34),
+			_Utils_Tuple2('j', 35),
+			_Utils_Tuple2('k', 36),
+			_Utils_Tuple2('l', 37),
+			_Utils_Tuple2('m', 38),
+			_Utils_Tuple2('n', 39),
+			_Utils_Tuple2('o', 40),
+			_Utils_Tuple2('p', 41),
+			_Utils_Tuple2('q', 42),
+			_Utils_Tuple2('r', 43),
+			_Utils_Tuple2('s', 44),
+			_Utils_Tuple2('t', 45),
+			_Utils_Tuple2('u', 46),
+			_Utils_Tuple2('v', 47),
+			_Utils_Tuple2('w', 48),
+			_Utils_Tuple2('x', 49),
+			_Utils_Tuple2('y', 50),
+			_Utils_Tuple2('z', 51),
+			_Utils_Tuple2('0', 52),
+			_Utils_Tuple2('1', 53),
+			_Utils_Tuple2('2', 54),
+			_Utils_Tuple2('3', 55),
+			_Utils_Tuple2('4', 56),
+			_Utils_Tuple2('5', 57),
+			_Utils_Tuple2('6', 58),
+			_Utils_Tuple2('7', 59),
+			_Utils_Tuple2('8', 60),
+			_Utils_Tuple2('9', 61),
+			_Utils_Tuple2('+', 62),
+			_Utils_Tuple2('/', 63)
+		]));
+var $elm$core$String$cons = _String_cons;
+var $elm$core$String$fromChar = function (_char) {
+	return A2($elm$core$String$cons, _char, '');
+};
+var $chelovek0v$bbase64$Base64$Table$decode = function (_char) {
+	return A2(
+		$elm$core$Dict$get,
+		$elm$core$String$fromChar(_char),
+		$chelovek0v$bbase64$Base64$Table$charToCodeMap);
+};
+var $chelovek0v$bbase64$Base64$Shift$Shift2 = {$: 'Shift2'};
+var $chelovek0v$bbase64$Base64$Shift$Shift4 = {$: 'Shift4'};
+var $chelovek0v$bbase64$Base64$Shift$Shift6 = {$: 'Shift6'};
+var $chelovek0v$bbase64$Base64$Shift$Shift0 = {$: 'Shift0'};
+var $chelovek0v$bbase64$Base64$Shift$decodeNext = function (shift) {
+	switch (shift.$) {
+		case 'Shift0':
+			return $chelovek0v$bbase64$Base64$Shift$Shift2;
+		case 'Shift2':
+			return $chelovek0v$bbase64$Base64$Shift$Shift4;
+		case 'Shift4':
+			return $chelovek0v$bbase64$Base64$Shift$Shift6;
+		default:
+			return $chelovek0v$bbase64$Base64$Shift$Shift0;
+	}
+};
+var $elm$core$Bitwise$or = _Bitwise_or;
+var $chelovek0v$bbase64$Base64$Shift$toInt = function (shift) {
+	switch (shift.$) {
+		case 'Shift0':
+			return 0;
+		case 'Shift2':
+			return 2;
+		case 'Shift4':
+			return 4;
+		default:
+			return 6;
+	}
+};
+var $chelovek0v$bbase64$Base64$Shift$shiftRightZfBy = F2(
+	function (shift, value) {
+		return value >>> $chelovek0v$bbase64$Base64$Shift$toInt(shift);
+	});
+var $chelovek0v$bbase64$Base64$Decode$finishPartialByte = F3(
+	function (shift, sextet, partialByte) {
+		return partialByte | A2($chelovek0v$bbase64$Base64$Shift$shiftRightZfBy, shift, sextet);
+	});
+var $chelovek0v$bbase64$Base64$Shift$shiftLeftBy = F2(
+	function (shift, value) {
+		return value << $chelovek0v$bbase64$Base64$Shift$toInt(shift);
+	});
+var $elm$bytes$Bytes$Encode$U8 = function (a) {
+	return {$: 'U8', a: a};
+};
+var $elm$bytes$Bytes$Encode$unsignedInt8 = $elm$bytes$Bytes$Encode$U8;
+var $chelovek0v$bbase64$Base64$Decode$decodeStep = F2(
+	function (sextet, _v0) {
+		var shift = _v0.a;
+		var partialByte = _v0.b;
+		var deferredEncoders = _v0.c;
+		var nextBlankByte = function () {
+			switch (shift.$) {
+				case 'Shift0':
+					return A2($chelovek0v$bbase64$Base64$Shift$shiftLeftBy, $chelovek0v$bbase64$Base64$Shift$Shift2, sextet);
+				case 'Shift2':
+					return A2($chelovek0v$bbase64$Base64$Shift$shiftLeftBy, $chelovek0v$bbase64$Base64$Shift$Shift4, sextet);
+				case 'Shift4':
+					return A2($chelovek0v$bbase64$Base64$Shift$shiftLeftBy, $chelovek0v$bbase64$Base64$Shift$Shift6, sextet);
+				default:
+					return 0;
+			}
+		}();
+		var finishedByte = function () {
+			switch (shift.$) {
+				case 'Shift0':
+					return $elm$core$Maybe$Nothing;
+				case 'Shift2':
+					return $elm$core$Maybe$Just(
+						A3($chelovek0v$bbase64$Base64$Decode$finishPartialByte, $chelovek0v$bbase64$Base64$Shift$Shift4, sextet, partialByte));
+				case 'Shift4':
+					return $elm$core$Maybe$Just(
+						A3($chelovek0v$bbase64$Base64$Decode$finishPartialByte, $chelovek0v$bbase64$Base64$Shift$Shift2, sextet, partialByte));
+				default:
+					return $elm$core$Maybe$Just(partialByte | sextet);
+			}
+		}();
+		var nextDeferredDecoders = function () {
+			if (finishedByte.$ === 'Just') {
+				var byte_ = finishedByte.a;
+				return A2(
+					$elm$core$List$cons,
+					$elm$bytes$Bytes$Encode$unsignedInt8(byte_),
+					deferredEncoders);
+			} else {
+				return deferredEncoders;
+			}
+		}();
+		return _Utils_Tuple3(
+			$chelovek0v$bbase64$Base64$Shift$decodeNext(shift),
+			nextBlankByte,
+			nextDeferredDecoders);
+	});
+var $elm$core$String$foldl = _String_foldl;
+var $chelovek0v$bbase64$Base64$Decode$initialState = _Utils_Tuple3($chelovek0v$bbase64$Base64$Shift$Shift0, 0, _List_Nil);
+var $elm$core$Maybe$map = F2(
+	function (f, maybe) {
+		if (maybe.$ === 'Just') {
+			var value = maybe.a;
+			return $elm$core$Maybe$Just(
+				f(value));
+		} else {
+			return $elm$core$Maybe$Nothing;
+		}
+	});
+var $elm$core$Result$map = F2(
+	function (func, ra) {
+		if (ra.$ === 'Ok') {
+			var a = ra.a;
+			return $elm$core$Result$Ok(
+				func(a));
+		} else {
+			var e = ra.a;
+			return $elm$core$Result$Err(e);
+		}
+	});
+var $elm$core$String$dropRight = F2(
+	function (n, string) {
+		return (n < 1) ? string : A3($elm$core$String$slice, 0, -n, string);
+	});
+var $elm$core$String$endsWith = _String_endsWith;
+var $chelovek0v$bbase64$Base64$Decode$strip = function (input) {
+	return A2($elm$core$String$endsWith, '==', input) ? $elm$core$Result$Ok(
+		A2($elm$core$String$dropRight, 2, input)) : (A2($elm$core$String$endsWith, '=', input) ? $elm$core$Result$Ok(
+		A2($elm$core$String$dropRight, 1, input)) : $elm$core$Result$Ok(input));
+};
+var $chelovek0v$bbase64$Base64$Decode$ValidationError = {$: 'ValidationError'};
+var $elm$regex$Regex$Match = F4(
+	function (match, index, number, submatches) {
+		return {index: index, match: match, number: number, submatches: submatches};
+	});
+var $elm$regex$Regex$contains = _Regex_contains;
+var $elm$regex$Regex$fromStringWith = _Regex_fromStringWith;
+var $elm$regex$Regex$fromString = function (string) {
+	return A2(
+		$elm$regex$Regex$fromStringWith,
+		{caseInsensitive: false, multiline: false},
+		string);
+};
+var $elm$regex$Regex$never = _Regex_never;
+var $chelovek0v$bbase64$Base64$Decode$validate = function (input) {
+	var regex = A2(
+		$elm$core$Maybe$withDefault,
+		$elm$regex$Regex$never,
+		$elm$regex$Regex$fromString('^[A-Za-z0-9\\/+]*$'));
+	return A2($elm$regex$Regex$contains, regex, input) ? $elm$core$Result$Ok(input) : $elm$core$Result$Err($chelovek0v$bbase64$Base64$Decode$ValidationError);
+};
+var $chelovek0v$bbase64$Base64$Decode$tryDecode = function (input) {
+	return A2(
+		$elm$core$Result$map,
+		A2(
+			$elm$core$String$foldl,
+			F2(
+				function (_char, state) {
+					return A2(
+						$elm$core$Maybe$withDefault,
+						state,
+						A2(
+							$elm$core$Maybe$map,
+							function (sextet) {
+								return A2($chelovek0v$bbase64$Base64$Decode$decodeStep, sextet, state);
+							},
+							$chelovek0v$bbase64$Base64$Table$decode(_char)));
+				}),
+			$chelovek0v$bbase64$Base64$Decode$initialState),
+		A2(
+			$elm$core$Result$andThen,
+			$chelovek0v$bbase64$Base64$Decode$validate,
+			$chelovek0v$bbase64$Base64$Decode$strip(input)));
+};
+var $chelovek0v$bbase64$Base64$Decode$bytes = $chelovek0v$bbase64$Base64$Decode$Decoder(
+	function (input) {
+		var _v0 = $chelovek0v$bbase64$Base64$Decode$tryDecode(input);
+		if (_v0.$ === 'Ok') {
+			var _v1 = _v0.a;
+			var deferredEncoders = _v1.c;
+			return $elm$core$Result$Ok(
+				$chelovek0v$bbase64$Base64$Decode$encodeBytes(deferredEncoders));
+		} else {
+			var e = _v0.a;
+			return $elm$core$Result$Err(e);
+		}
+	});
+var $chelovek0v$bbase64$Base64$Encode$BytesEncoder = function (a) {
+	return {$: 'BytesEncoder', a: a};
+};
+var $chelovek0v$bbase64$Base64$Encode$bytes = function (input) {
+	return $chelovek0v$bbase64$Base64$Encode$BytesEncoder(input);
+};
+var $chelovek0v$bbase64$Base64$Decode$decode = F2(
+	function (_v0, input) {
+		var decoder = _v0.a;
+		return decoder(input);
+	});
+var $elm$bytes$Bytes$Encode$Utf8 = F2(
+	function (a, b) {
+		return {$: 'Utf8', a: a, b: b};
+	});
+var $elm$bytes$Bytes$Encode$string = function (str) {
+	return A2(
+		$elm$bytes$Bytes$Encode$Utf8,
+		_Bytes_getStringWidth(str),
+		str);
+};
+var $elm$bytes$Bytes$Decode$decode = F2(
+	function (_v0, bs) {
+		var decoder = _v0.a;
+		return A2(_Bytes_decode, decoder, bs);
+	});
+var $elm$bytes$Bytes$Decode$Done = function (a) {
+	return {$: 'Done', a: a};
+};
+var $elm$bytes$Bytes$Decode$Loop = function (a) {
+	return {$: 'Loop', a: a};
+};
+var $chelovek0v$bbase64$Base64$Shift$and = F2(
+	function (shift, value) {
+		switch (shift.$) {
+			case 'Shift0':
+				return value;
+			case 'Shift2':
+				return 3 & value;
+			case 'Shift4':
+				return 15 & value;
+			default:
+				return 63 & value;
+		}
+	});
+var $chelovek0v$bbase64$Base64$Table$codeToCharMap = $elm$core$Dict$fromList(
+	_List_fromArray(
+		[
+			_Utils_Tuple2(0, 'A'),
+			_Utils_Tuple2(1, 'B'),
+			_Utils_Tuple2(2, 'C'),
+			_Utils_Tuple2(3, 'D'),
+			_Utils_Tuple2(4, 'E'),
+			_Utils_Tuple2(5, 'F'),
+			_Utils_Tuple2(6, 'G'),
+			_Utils_Tuple2(7, 'H'),
+			_Utils_Tuple2(8, 'I'),
+			_Utils_Tuple2(9, 'J'),
+			_Utils_Tuple2(10, 'K'),
+			_Utils_Tuple2(11, 'L'),
+			_Utils_Tuple2(12, 'M'),
+			_Utils_Tuple2(13, 'N'),
+			_Utils_Tuple2(14, 'O'),
+			_Utils_Tuple2(15, 'P'),
+			_Utils_Tuple2(16, 'Q'),
+			_Utils_Tuple2(17, 'R'),
+			_Utils_Tuple2(18, 'S'),
+			_Utils_Tuple2(19, 'T'),
+			_Utils_Tuple2(20, 'U'),
+			_Utils_Tuple2(21, 'V'),
+			_Utils_Tuple2(22, 'W'),
+			_Utils_Tuple2(23, 'X'),
+			_Utils_Tuple2(24, 'Y'),
+			_Utils_Tuple2(25, 'Z'),
+			_Utils_Tuple2(26, 'a'),
+			_Utils_Tuple2(27, 'b'),
+			_Utils_Tuple2(28, 'c'),
+			_Utils_Tuple2(29, 'd'),
+			_Utils_Tuple2(30, 'e'),
+			_Utils_Tuple2(31, 'f'),
+			_Utils_Tuple2(32, 'g'),
+			_Utils_Tuple2(33, 'h'),
+			_Utils_Tuple2(34, 'i'),
+			_Utils_Tuple2(35, 'j'),
+			_Utils_Tuple2(36, 'k'),
+			_Utils_Tuple2(37, 'l'),
+			_Utils_Tuple2(38, 'm'),
+			_Utils_Tuple2(39, 'n'),
+			_Utils_Tuple2(40, 'o'),
+			_Utils_Tuple2(41, 'p'),
+			_Utils_Tuple2(42, 'q'),
+			_Utils_Tuple2(43, 'r'),
+			_Utils_Tuple2(44, 's'),
+			_Utils_Tuple2(45, 't'),
+			_Utils_Tuple2(46, 'u'),
+			_Utils_Tuple2(47, 'v'),
+			_Utils_Tuple2(48, 'w'),
+			_Utils_Tuple2(49, 'x'),
+			_Utils_Tuple2(50, 'y'),
+			_Utils_Tuple2(51, 'z'),
+			_Utils_Tuple2(52, '0'),
+			_Utils_Tuple2(53, '1'),
+			_Utils_Tuple2(54, '2'),
+			_Utils_Tuple2(55, '3'),
+			_Utils_Tuple2(56, '4'),
+			_Utils_Tuple2(57, '5'),
+			_Utils_Tuple2(58, '6'),
+			_Utils_Tuple2(59, '7'),
+			_Utils_Tuple2(60, '8'),
+			_Utils_Tuple2(61, '9'),
+			_Utils_Tuple2(62, '+'),
+			_Utils_Tuple2(63, '/')
+		]));
+var $chelovek0v$bbase64$Base64$Table$encode = function (code) {
+	var _v0 = A2($elm$core$Dict$get, code, $chelovek0v$bbase64$Base64$Table$codeToCharMap);
+	if (_v0.$ === 'Just') {
+		var char_ = _v0.a;
+		return char_;
+	} else {
+		return '';
+	}
+};
+var $chelovek0v$bbase64$Base64$Shift$next = function (shift) {
+	switch (shift.$) {
+		case 'Shift0':
+			return $chelovek0v$bbase64$Base64$Shift$Shift2;
+		case 'Shift2':
+			return $chelovek0v$bbase64$Base64$Shift$Shift4;
+		case 'Shift4':
+			return $chelovek0v$bbase64$Base64$Shift$Shift6;
+		default:
+			return $chelovek0v$bbase64$Base64$Shift$Shift2;
+	}
+};
+var $chelovek0v$bbase64$Base64$Encode$sixtet = F2(
+	function (octet, _v0) {
+		var shift = _v0.a;
+		var sixtet_ = _v0.b;
+		var strAcc = _v0.c;
+		switch (shift.$) {
+			case 'Shift0':
+				return A2($chelovek0v$bbase64$Base64$Shift$shiftRightZfBy, $chelovek0v$bbase64$Base64$Shift$Shift2, octet);
+			case 'Shift2':
+				return A2($chelovek0v$bbase64$Base64$Shift$shiftLeftBy, $chelovek0v$bbase64$Base64$Shift$Shift4, sixtet_) | A2($chelovek0v$bbase64$Base64$Shift$shiftRightZfBy, $chelovek0v$bbase64$Base64$Shift$Shift4, octet);
+			case 'Shift4':
+				return A2($chelovek0v$bbase64$Base64$Shift$shiftLeftBy, $chelovek0v$bbase64$Base64$Shift$Shift2, sixtet_) | A2($chelovek0v$bbase64$Base64$Shift$shiftRightZfBy, $chelovek0v$bbase64$Base64$Shift$Shift6, octet);
+			default:
+				return sixtet_;
+		}
+	});
+var $chelovek0v$bbase64$Base64$Encode$encodeStep = F2(
+	function (octet, encodeState) {
+		var shift = encodeState.a;
+		var strAcc = encodeState.c;
+		var nextSixtet = function () {
+			switch (shift.$) {
+				case 'Shift0':
+					return A2($chelovek0v$bbase64$Base64$Shift$and, $chelovek0v$bbase64$Base64$Shift$Shift2, octet);
+				case 'Shift2':
+					return A2($chelovek0v$bbase64$Base64$Shift$and, $chelovek0v$bbase64$Base64$Shift$Shift4, octet);
+				case 'Shift4':
+					return A2($chelovek0v$bbase64$Base64$Shift$and, $chelovek0v$bbase64$Base64$Shift$Shift6, octet);
+				default:
+					return A2($chelovek0v$bbase64$Base64$Shift$and, $chelovek0v$bbase64$Base64$Shift$Shift2, octet);
+			}
+		}();
+		var currentSixtet = A2($chelovek0v$bbase64$Base64$Encode$sixtet, octet, encodeState);
+		var base64Char = function () {
+			if (shift.$ === 'Shift6') {
+				return _Utils_ap(
+					$chelovek0v$bbase64$Base64$Table$encode(currentSixtet),
+					$chelovek0v$bbase64$Base64$Table$encode(
+						A2($chelovek0v$bbase64$Base64$Shift$shiftRightZfBy, $chelovek0v$bbase64$Base64$Shift$Shift2, octet)));
+			} else {
+				return $chelovek0v$bbase64$Base64$Table$encode(currentSixtet);
+			}
+		}();
+		return _Utils_Tuple3(
+			$chelovek0v$bbase64$Base64$Shift$next(shift),
+			nextSixtet,
+			_Utils_ap(strAcc, base64Char));
+	});
+var $elm$bytes$Bytes$Decode$Decoder = function (a) {
+	return {$: 'Decoder', a: a};
+};
+var $elm$bytes$Bytes$Decode$map = F2(
+	function (func, _v0) {
+		var decodeA = _v0.a;
+		return $elm$bytes$Bytes$Decode$Decoder(
+			F2(
+				function (bites, offset) {
+					var _v1 = A2(decodeA, bites, offset);
+					var aOffset = _v1.a;
+					var a = _v1.b;
+					return _Utils_Tuple2(
+						aOffset,
+						func(a));
+				}));
+	});
+var $elm$bytes$Bytes$Decode$succeed = function (a) {
+	return $elm$bytes$Bytes$Decode$Decoder(
+		F2(
+			function (_v0, offset) {
+				return _Utils_Tuple2(offset, a);
+			}));
+};
+var $chelovek0v$bbase64$Base64$Encode$decodeStep = F2(
+	function (octetDecoder, _v0) {
+		var n = _v0.a;
+		var encodeState = _v0.b;
+		return (n <= 0) ? $elm$bytes$Bytes$Decode$succeed(
+			$elm$bytes$Bytes$Decode$Done(encodeState)) : A2(
+			$elm$bytes$Bytes$Decode$map,
+			function (octet) {
+				return $elm$bytes$Bytes$Decode$Loop(
 					_Utils_Tuple2(
-					'message',
-					$elm$json$Json$Encode$string($.message)),
-					_Utils_Tuple2(
-					'sid',
-					$elm$json$Json$Encode$string($.sid))
-				]));
+						n - 1,
+						A2($chelovek0v$bbase64$Base64$Encode$encodeStep, octet, encodeState)));
+			},
+			octetDecoder);
+	});
+var $chelovek0v$bbase64$Base64$Encode$finalize = function (_v0) {
+	var shift = _v0.a;
+	var sixtet_ = _v0.b;
+	var strAcc = _v0.c;
+	switch (shift.$) {
+		case 'Shift6':
+			return _Utils_ap(
+				strAcc,
+				$chelovek0v$bbase64$Base64$Table$encode(sixtet_));
+		case 'Shift4':
+			return strAcc + ($chelovek0v$bbase64$Base64$Table$encode(
+				A2($chelovek0v$bbase64$Base64$Shift$shiftLeftBy, $chelovek0v$bbase64$Base64$Shift$Shift2, sixtet_)) + '=');
+		case 'Shift2':
+			return strAcc + ($chelovek0v$bbase64$Base64$Table$encode(
+				A2($chelovek0v$bbase64$Base64$Shift$shiftLeftBy, $chelovek0v$bbase64$Base64$Shift$Shift4, sixtet_)) + '==');
+		default:
+			return strAcc;
+	}
+};
+var $chelovek0v$bbase64$Base64$Encode$initialEncodeState = _Utils_Tuple3($chelovek0v$bbase64$Base64$Shift$Shift0, 0, '');
+var $elm$bytes$Bytes$Decode$loopHelp = F4(
+	function (state, callback, bites, offset) {
+		loopHelp:
+		while (true) {
+			var _v0 = callback(state);
+			var decoder = _v0.a;
+			var _v1 = A2(decoder, bites, offset);
+			var newOffset = _v1.a;
+			var step = _v1.b;
+			if (step.$ === 'Loop') {
+				var newState = step.a;
+				var $temp$state = newState,
+					$temp$callback = callback,
+					$temp$bites = bites,
+					$temp$offset = newOffset;
+				state = $temp$state;
+				callback = $temp$callback;
+				bites = $temp$bites;
+				offset = $temp$offset;
+				continue loopHelp;
+			} else {
+				var result = step.a;
+				return _Utils_Tuple2(newOffset, result);
+			}
+		}
+	});
+var $elm$bytes$Bytes$Decode$loop = F2(
+	function (state, callback) {
+		return $elm$bytes$Bytes$Decode$Decoder(
+			A2($elm$bytes$Bytes$Decode$loopHelp, state, callback));
+	});
+var $elm$bytes$Bytes$Decode$unsignedInt8 = $elm$bytes$Bytes$Decode$Decoder(_Bytes_read_u8);
+var $elm$bytes$Bytes$width = _Bytes_width;
+var $chelovek0v$bbase64$Base64$Encode$tryEncode = function (input) {
+	var decoderInitialState = _Utils_Tuple2(
+		$elm$bytes$Bytes$width(input),
+		$chelovek0v$bbase64$Base64$Encode$initialEncodeState);
+	var base64Decoder = A2(
+		$elm$bytes$Bytes$Decode$loop,
+		decoderInitialState,
+		$chelovek0v$bbase64$Base64$Encode$decodeStep($elm$bytes$Bytes$Decode$unsignedInt8));
+	return A2(
+		$elm$core$Maybe$map,
+		$chelovek0v$bbase64$Base64$Encode$finalize,
+		A2($elm$bytes$Bytes$Decode$decode, base64Decoder, input));
+};
+var $chelovek0v$bbase64$Base64$Encode$encode = function (encoder) {
+	if (encoder.$ === 'StringEncoder') {
+		var input = encoder.a;
+		return A2(
+			$elm$core$Maybe$withDefault,
+			'',
+			$chelovek0v$bbase64$Base64$Encode$tryEncode(
+				$elm$bytes$Bytes$Encode$encode(
+					$elm$bytes$Bytes$Encode$string(input))));
+	} else {
+		var input = encoder.a;
+		return A2(
+			$elm$core$Maybe$withDefault,
+			'',
+			$chelovek0v$bbase64$Base64$Encode$tryEncode(input));
+	}
+};
+var $elm$core$Result$mapError = F2(
+	function (f, result) {
+		if (result.$ === 'Ok') {
+			var v = result.a;
+			return $elm$core$Result$Ok(v);
+		} else {
+			var e = result.a;
+			return $elm$core$Result$Err(
+				f(e));
+		}
 	});
 var $author$project$Nats$Protocol$Error = function (a) {
 	return {$: 'Error', a: a};
@@ -11071,13 +11933,116 @@ var $author$project$Nats$Protocol$Partial = function (a) {
 var $author$project$Nats$Protocol$PartialOperation = function (a) {
 	return {$: 'PartialOperation', a: a};
 };
-var $elm$core$String$append = _String_append;
-var $author$project$Nats$Protocol$cr = '\u000D\n';
-var $elm$core$String$dropRight = F2(
-	function (n, string) {
-		return (n < 1) ? string : A3($elm$core$String$slice, 0, -n, string);
+var $elm$bytes$Bytes$Decode$andThen = F2(
+	function (callback, _v0) {
+		var decodeA = _v0.a;
+		return $elm$bytes$Bytes$Decode$Decoder(
+			F2(
+				function (bites, offset) {
+					var _v1 = A2(decodeA, bites, offset);
+					var newOffset = _v1.a;
+					var a = _v1.b;
+					var _v2 = callback(a);
+					var decodeB = _v2.a;
+					return A2(decodeB, bites, newOffset);
+				}));
 	});
-var $elm$core$String$endsWith = _String_endsWith;
+var $elm$bytes$Bytes$Decode$bytes = function (n) {
+	return $elm$bytes$Bytes$Decode$Decoder(
+		_Bytes_read_bytes(n));
+};
+var $elm$bytes$Bytes$Encode$Bytes = function (a) {
+	return {$: 'Bytes', a: a};
+};
+var $elm$bytes$Bytes$Encode$bytes = $elm$bytes$Bytes$Encode$Bytes;
+var $author$project$Nats$Protocol$cr = '\u000D\n';
+var $author$project$Nats$Protocol$stringBytes = function (str) {
+	return $elm$bytes$Bytes$Encode$encode(
+		$elm$bytes$Bytes$Encode$string(str));
+};
+var $author$project$Nats$Protocol$emptyBytes = $author$project$Nats$Protocol$stringBytes('');
+var $elm$bytes$Bytes$Decode$fail = $elm$bytes$Bytes$Decode$Decoder(_Bytes_decodeFailure);
+var $elm$core$Maybe$andThen = F2(
+	function (callback, maybeValue) {
+		if (maybeValue.$ === 'Just') {
+			var value = maybeValue.a;
+			return callback(value);
+		} else {
+			return $elm$core$Maybe$Nothing;
+		}
+	});
+var $elm$bytes$Bytes$Decode$string = function (n) {
+	return $elm$bytes$Bytes$Decode$Decoder(
+		_Bytes_read_string(n));
+};
+var $elm$core$String$foldr = _String_foldr;
+var $elm$core$String$toList = function (string) {
+	return A3($elm$core$String$foldr, $elm$core$List$cons, _List_Nil, string);
+};
+var $author$project$Nats$Protocol$findStringInBytes = function (s) {
+	var stringLen = $elm$core$String$length(s);
+	var charList = $elm$core$String$toList(s);
+	var step = function (_v5) {
+		var currentMatch = _v5.a;
+		var index = _v5.b;
+		return A2(
+			$elm$bytes$Bytes$Decode$map,
+			function (chars) {
+				var _v0 = _Utils_Tuple2(
+					$elm$core$String$toList(chars),
+					currentMatch);
+				if ((_v0.a.b && (!_v0.a.b.b)) && _v0.b.b) {
+					if (!_v0.b.b.b) {
+						var _v1 = _v0.a;
+						var next = _v1.a;
+						var _v2 = _v0.b;
+						var expected = _v2.a;
+						return _Utils_eq(next, expected) ? $elm$bytes$Bytes$Decode$Done(
+							$elm$core$Maybe$Just((index - stringLen) + 1)) : $elm$bytes$Bytes$Decode$Loop(
+							_Utils_Tuple2(charList, index + 1));
+					} else {
+						var _v3 = _v0.a;
+						var next = _v3.a;
+						var _v4 = _v0.b;
+						var expected = _v4.a;
+						var tail = _v4.b;
+						return _Utils_eq(next, expected) ? $elm$bytes$Bytes$Decode$Loop(
+							_Utils_Tuple2(tail, index + 1)) : $elm$bytes$Bytes$Decode$Loop(
+							_Utils_Tuple2(charList, index + 1));
+					}
+				} else {
+					return $elm$bytes$Bytes$Decode$Done($elm$core$Maybe$Nothing);
+				}
+			},
+			$elm$bytes$Bytes$Decode$string(1));
+	};
+	return A2(
+		$elm$core$Basics$composeR,
+		$elm$bytes$Bytes$Decode$decode(
+			A2(
+				$elm$bytes$Bytes$Decode$loop,
+				_Utils_Tuple2(charList, 0),
+				step)),
+		$elm$core$Maybe$andThen($elm$core$Basics$identity));
+};
+var $elm$bytes$Bytes$Decode$map2 = F3(
+	function (func, _v0, _v1) {
+		var decodeA = _v0.a;
+		var decodeB = _v1.a;
+		return $elm$bytes$Bytes$Decode$Decoder(
+			F2(
+				function (bites, offset) {
+					var _v2 = A2(decodeA, bites, offset);
+					var aOffset = _v2.a;
+					var a = _v2.b;
+					var _v3 = A2(decodeB, bites, aOffset);
+					var bOffset = _v3.a;
+					var b = _v3.b;
+					return _Utils_Tuple2(
+						bOffset,
+						A2(func, a, b));
+				}));
+	});
 var $author$project$Nats$Protocol$ERR = function (a) {
 	return {$: 'ERR', a: a};
 };
@@ -11180,10 +12145,6 @@ var $author$project$Nats$Protocol$decodeServerInfo = A3(
 							'server_id',
 							$elm$json$Json$Decode$string,
 							$elm$json$Json$Decode$succeed($author$project$Nats$Protocol$ServerInfo))))))));
-var $elm$regex$Regex$Match = F4(
-	function (match, index, number, submatches) {
-		return {index: index, match: match, number: number, submatches: submatches};
-	});
 var $elm$regex$Regex$findAtMost = _Regex_findAtMost;
 var $elm$core$List$head = function (list) {
 	if (list.b) {
@@ -11193,13 +12154,6 @@ var $elm$core$List$head = function (list) {
 	} else {
 		return $elm$core$Maybe$Nothing;
 	}
-};
-var $elm$regex$Regex$fromStringWith = _Regex_fromStringWith;
-var $elm$regex$Regex$fromString = function (string) {
-	return A2(
-		$elm$regex$Regex$fromStringWith,
-		{caseInsensitive: false, multiline: false},
-		string);
 };
 var $author$project$Nats$Protocol$messageRe = $elm$regex$Regex$fromString('^MSG ([a-zA-Z0-9._-]+) ([a-zA-Z0-9]+)( [a-zA-Z0-9._]+)? ([0-9]+)$');
 var $author$project$Nats$Protocol$parseCommandMessage = function (str) {
@@ -11258,125 +12212,142 @@ var $author$project$Nats$Protocol$parseCommandMessage = function (str) {
 		return $elm$core$Result$Err('Invalid MSG syntax: ' + str);
 	}
 };
-var $author$project$Nats$Protocol$parseCommand = function (c) {
-	switch (c) {
-		case 'PING':
-			return $elm$core$Result$Ok($author$project$Nats$Protocol$PING);
-		case 'PONG':
-			return $elm$core$Result$Ok($author$project$Nats$Protocol$PONG);
-		case '+OK':
-			return $elm$core$Result$Ok($author$project$Nats$Protocol$OK);
-		default:
-			if (A2($elm$core$String$startsWith, 'INFO ', c)) {
-				var _v1 = A2(
-					$elm$json$Json$Decode$decodeString,
-					$author$project$Nats$Protocol$decodeServerInfo,
-					A2($elm$core$String$dropLeft, 5, c));
-				if (_v1.$ === 'Ok') {
-					var info = _v1.a;
-					return $elm$core$Result$Ok(
-						$author$project$Nats$Protocol$INFO(info));
-				} else {
-					var err = _v1.a;
-					return $elm$core$Result$Err(
-						$elm$json$Json$Decode$errorToString(err));
-				}
-			} else {
-				if (A2($elm$core$String$startsWith, '-ERR ', c)) {
-					return $elm$core$Result$Ok(
-						$author$project$Nats$Protocol$ERR(
-							A2(
-								$elm$core$String$dropRight,
-								1,
-								A2($elm$core$String$dropLeft, 5, c))));
-				} else {
-					if (A2($elm$core$String$startsWith, 'MSG', c)) {
-						var _v2 = $author$project$Nats$Protocol$parseCommandMessage(c);
-						if (_v2.$ === 'Ok') {
-							var msg = _v2.a;
-							return $elm$core$Result$Ok(
-								A2(
-									$author$project$Nats$Protocol$MSG,
-									msg.sid,
-									{data: '', replyTo: msg.replyTo, size: msg.size, subject: msg.subject}));
-						} else {
-							var err = _v2.a;
-							return $elm$core$Result$Err(err);
-						}
+var $author$project$Nats$Protocol$parseCommand = F2(
+	function (empty, c) {
+		switch (c) {
+			case 'PING':
+				return $elm$core$Result$Ok($author$project$Nats$Protocol$PING);
+			case 'PONG':
+				return $elm$core$Result$Ok($author$project$Nats$Protocol$PONG);
+			case '+OK':
+				return $elm$core$Result$Ok($author$project$Nats$Protocol$OK);
+			default:
+				if (A2($elm$core$String$startsWith, 'INFO ', c)) {
+					var _v1 = A2(
+						$elm$json$Json$Decode$decodeString,
+						$author$project$Nats$Protocol$decodeServerInfo,
+						A2($elm$core$String$dropLeft, 5, c));
+					if (_v1.$ === 'Ok') {
+						var info = _v1.a;
+						return $elm$core$Result$Ok(
+							$author$project$Nats$Protocol$INFO(info));
 					} else {
-						return $elm$core$Result$Err('Invalid command \'' + (c + '\''));
+						var err = _v1.a;
+						return $elm$core$Result$Err(
+							$elm$json$Json$Decode$errorToString(err));
+					}
+				} else {
+					if (A2($elm$core$String$startsWith, '-ERR ', c)) {
+						return $elm$core$Result$Ok(
+							$author$project$Nats$Protocol$ERR(
+								A2(
+									$elm$core$String$dropRight,
+									1,
+									A2($elm$core$String$dropLeft, 5, c))));
+					} else {
+						if (A2($elm$core$String$startsWith, 'MSG', c)) {
+							var _v2 = $author$project$Nats$Protocol$parseCommandMessage(c);
+							if (_v2.$ === 'Ok') {
+								var msg = _v2.a;
+								return $elm$core$Result$Ok(
+									A2(
+										$author$project$Nats$Protocol$MSG,
+										msg.sid,
+										{data: empty, replyTo: msg.replyTo, size: msg.size, subject: msg.subject}));
+							} else {
+								var err = _v2.a;
+								return $elm$core$Result$Err(err);
+							}
+						} else {
+							return $elm$core$Result$Err('Invalid command \'' + (c + '\''));
+						}
 					}
 				}
-			}
-	}
-};
-var $author$project$Nats$Protocol$splitFirstLine = function (s) {
-	var _v0 = A2($elm$core$String$indexes, $author$project$Nats$Protocol$cr, s);
-	if (!_v0.b) {
-		return _Utils_Tuple2(s, '');
-	} else {
-		var i = _v0.a;
-		return _Utils_Tuple2(
-			A2($elm$core$String$left, i, s),
-			A2($elm$core$String$dropLeft, i + 2, s));
-	}
-};
-var $author$project$Nats$Protocol$parseString = F2(
-	function (str, partialOp) {
-		if (partialOp.$ === 'Just') {
-			var partial = partialOp.a.a;
-			var data = A2($elm$core$String$append, partial.data, str);
-			var newDataSize = $elm$core$String$length(data);
-			return (_Utils_eq(newDataSize, partial.size + 2) && A2($elm$core$String$endsWith, $author$project$Nats$Protocol$cr, data)) ? $author$project$Nats$Protocol$Operation(
+		}
+	});
+var $author$project$Nats$Protocol$parseBytes = F2(
+	function (data, partial) {
+		if (partial.$ === 'Just') {
+			var msg = partial.a.a;
+			var body = $elm$bytes$Bytes$Encode$encode(
+				$elm$bytes$Bytes$Encode$sequence(
+					_List_fromArray(
+						[
+							$elm$bytes$Bytes$Encode$bytes(msg.data),
+							$elm$bytes$Bytes$Encode$bytes(data)
+						])));
+			var bodyWidth = $elm$bytes$Bytes$width(body);
+			return _Utils_eq(bodyWidth, msg.size + 2) ? $author$project$Nats$Protocol$Operation(
 				A2(
 					$author$project$Nats$Protocol$MSG,
-					partial.sid,
-					{
-						data: A2($elm$core$String$dropRight, 2, data),
-						replyTo: partial.replyTo,
-						size: partial.size,
-						subject: partial.subject
-					})) : ((_Utils_cmp(newDataSize, partial.size + 2) > 0) ? $author$project$Nats$Protocol$Error('Received too many data for the message') : $author$project$Nats$Protocol$Partial(
+					msg.sid,
+					{data: body, replyTo: msg.replyTo, size: msg.size, subject: msg.subject})) : ((_Utils_cmp(bodyWidth, msg.size + 2) > 0) ? $author$project$Nats$Protocol$Error('message payload is too big') : $author$project$Nats$Protocol$Partial(
 				$author$project$Nats$Protocol$PartialOperation(
 					_Utils_update(
-						partial,
-						{data: data}))));
+						msg,
+						{data: body}))));
 		} else {
-			var _v1 = $author$project$Nats$Protocol$splitFirstLine(str);
-			var firstLine = _v1.a;
-			var payload = _v1.b;
-			var _v2 = $author$project$Nats$Protocol$parseCommand(firstLine);
-			if (_v2.$ === 'Err') {
-				var err = _v2.a;
-				return $author$project$Nats$Protocol$Error(err);
+			var _v1 = A2($author$project$Nats$Protocol$findStringInBytes, $author$project$Nats$Protocol$cr, data);
+			if (_v1.$ === 'Nothing') {
+				return $author$project$Nats$Protocol$Error('Could not find CR separator');
 			} else {
-				if (_v2.a.$ === 'MSG') {
-					var _v3 = _v2.a;
-					var sid = _v3.a;
-					var msg = _v3.b;
-					return (_Utils_eq(
-						$elm$core$String$length(payload),
-						msg.size + 2) && A2($elm$core$String$endsWith, $author$project$Nats$Protocol$cr, payload)) ? $author$project$Nats$Protocol$Operation(
+				var index = _v1.a;
+				return A2(
+					$elm$core$Maybe$withDefault,
+					$author$project$Nats$Protocol$Error('could not decode input'),
+					A2(
+						$elm$bytes$Bytes$Decode$decode,
 						A2(
-							$author$project$Nats$Protocol$MSG,
-							sid,
-							{
-								data: A2($elm$core$String$dropRight, 2, payload),
-								replyTo: msg.replyTo,
-								size: msg.size,
-								subject: msg.subject
-							})) : ((_Utils_cmp(
-						$elm$core$String$length(payload),
-						msg.size + 2) > 0) ? $author$project$Nats$Protocol$Error('Too many data in the message payload') : $author$project$Nats$Protocol$Partial(
-						$author$project$Nats$Protocol$PartialOperation(
-							{data: payload, replyTo: msg.replyTo, sid: sid, size: msg.size, subject: msg.subject})));
-				} else {
-					var op = _v2.a;
-					return $author$project$Nats$Protocol$Operation(op);
-				}
+							$elm$bytes$Bytes$Decode$andThen,
+							function (s) {
+								var _v2 = A2($author$project$Nats$Protocol$parseCommand, $author$project$Nats$Protocol$emptyBytes, s);
+								if (_v2.$ === 'Ok') {
+									if (_v2.a.$ === 'MSG') {
+										var _v3 = _v2.a;
+										var sid = _v3.a;
+										var msg = _v3.b;
+										var payloadWidth = $elm$bytes$Bytes$width(data) - (index + 2);
+										return (_Utils_cmp(msg.size + 2, payloadWidth) < 0) ? $elm$bytes$Bytes$Decode$fail : (_Utils_eq(msg.size + 2, payloadWidth) ? A3(
+											$elm$bytes$Bytes$Decode$map2,
+											F2(
+												function (_v4, payload) {
+													return $author$project$Nats$Protocol$Operation(
+														A2(
+															$author$project$Nats$Protocol$MSG,
+															sid,
+															_Utils_update(
+																msg,
+																{data: payload})));
+												}),
+											$elm$bytes$Bytes$Decode$bytes(2),
+											$elm$bytes$Bytes$Decode$bytes(msg.size)) : A3(
+											$elm$bytes$Bytes$Decode$map2,
+											F2(
+												function (_v5, payload) {
+													return $author$project$Nats$Protocol$Partial(
+														$author$project$Nats$Protocol$PartialOperation(
+															{data: payload, replyTo: msg.replyTo, sid: sid, size: msg.size, subject: msg.subject}));
+												}),
+											$elm$bytes$Bytes$Decode$bytes(2),
+											$elm$bytes$Bytes$Decode$bytes(payloadWidth)));
+									} else {
+										var any = _v2.a;
+										return $elm$bytes$Bytes$Decode$succeed(
+											$author$project$Nats$Protocol$Operation(any));
+									}
+								} else {
+									var err = _v2.a;
+									return $elm$bytes$Bytes$Decode$succeed(
+										$author$project$Nats$Protocol$Error(err));
+								}
+							},
+							$elm$bytes$Bytes$Decode$string(index)),
+						data));
 			}
 		}
 	});
+var $author$project$Nats$Protocol$crBytes = $author$project$Nats$Protocol$stringBytes($author$project$Nats$Protocol$cr);
+var $elm$core$String$append = _String_append;
 var $elm$json$Json$Encode$bool = _Json_wrap;
 var $elm$json$Json$Encode$int = _Json_wrap;
 var $author$project$Nats$Protocol$encodeConnect = function (options) {
@@ -11500,21 +12471,30 @@ var $author$project$Nats$Protocol$opHeader = function (op) {
 			return 'ERR \'' + (err + '\'');
 	}
 };
-var $author$project$Nats$Protocol$toString = function (op) {
-	return _Utils_ap(
-		$author$project$Nats$Protocol$opHeader(op),
-		_Utils_ap(
-			$author$project$Nats$Protocol$cr,
-			function () {
-				if (op.$ === 'PUB') {
-					var message = op.a;
-					return _Utils_ap(message.data, $author$project$Nats$Protocol$cr);
-				} else {
-					return '';
-				}
-			}()));
+var $author$project$Nats$Protocol$toBytes = function (op) {
+	return $elm$bytes$Bytes$Encode$encode(
+		$elm$bytes$Bytes$Encode$sequence(
+			_Utils_ap(
+				_List_fromArray(
+					[
+						$elm$bytes$Bytes$Encode$string(
+						$author$project$Nats$Protocol$opHeader(op)),
+						$elm$bytes$Bytes$Encode$bytes($author$project$Nats$Protocol$crBytes)
+					]),
+				function () {
+					if (op.$ === 'PUB') {
+						var message = op.a;
+						return _List_fromArray(
+							[
+								$elm$bytes$Bytes$Encode$bytes(message.data),
+								$elm$bytes$Bytes$Encode$bytes($author$project$Nats$Protocol$crBytes)
+							]);
+					} else {
+						return _List_Nil;
+					}
+				}())));
 };
-var $author$project$Nats$Config$string = F2(
+var $author$project$Nats$Config$bytes = F2(
 	function (parentMsg, ports) {
 		return {
 			debug: false,
@@ -11522,14 +12502,129 @@ var $author$project$Nats$Config$string = F2(
 				function (_v0, s) {
 					return s;
 				}),
-			fromPortMessage: $elm$core$Result$Ok,
+			fromPortMessage: A2(
+				$elm$core$Basics$composeR,
+				$chelovek0v$bbase64$Base64$Decode$decode($chelovek0v$bbase64$Base64$Decode$bytes),
+				$elm$core$Result$mapError(
+					function (e) {
+						if (e.$ === 'ValidationError') {
+							return 'Base64 validation error';
+						} else {
+							return 'Base64 invalid base sequence';
+						}
+					})),
+			mode: 'binary',
 			parentMsg: parentMsg,
-			parse: $author$project$Nats$Protocol$parseString,
+			parse: $author$project$Nats$Protocol$parseBytes,
 			ports: ports,
-			size: $elm$core$String$length,
-			toPortMessage: $elm$core$Basics$identity,
-			write: $author$project$Nats$Protocol$toString
+			size: $elm$bytes$Bytes$width,
+			toPortMessage: A2($elm$core$Basics$composeR, $chelovek0v$bbase64$Base64$Encode$bytes, $chelovek0v$bbase64$Base64$Encode$encode),
+			write: $author$project$Nats$Protocol$toBytes
 		};
+	});
+var $elm$core$Debug$log = _Debug_log;
+var $author$project$Main$natsClose = _Platform_outgoingPort('natsClose', $elm$json$Json$Encode$string);
+var $author$project$Main$natsOnAck = _Platform_incomingPort(
+	'natsOnAck',
+	A2(
+		$elm$json$Json$Decode$andThen,
+		function (sid) {
+			return A2(
+				$elm$json$Json$Decode$andThen,
+				function (ack) {
+					return $elm$json$Json$Decode$succeed(
+						{ack: ack, sid: sid});
+				},
+				A2($elm$json$Json$Decode$field, 'ack', $elm$json$Json$Decode$string));
+		},
+		A2($elm$json$Json$Decode$field, 'sid', $elm$json$Json$Decode$string)));
+var $author$project$Main$natsOnClose = _Platform_incomingPort('natsOnClose', $elm$json$Json$Decode$string);
+var $author$project$Main$natsOnError = _Platform_incomingPort(
+	'natsOnError',
+	A2(
+		$elm$json$Json$Decode$andThen,
+		function (sid) {
+			return A2(
+				$elm$json$Json$Decode$andThen,
+				function (message) {
+					return $elm$json$Json$Decode$succeed(
+						{message: message, sid: sid});
+				},
+				A2($elm$json$Json$Decode$field, 'message', $elm$json$Json$Decode$string));
+		},
+		A2($elm$json$Json$Decode$field, 'sid', $elm$json$Json$Decode$string)));
+var $author$project$Main$natsOnMessage = _Platform_incomingPort(
+	'natsOnMessage',
+	A2(
+		$elm$json$Json$Decode$andThen,
+		function (sid) {
+			return A2(
+				$elm$json$Json$Decode$andThen,
+				function (message) {
+					return A2(
+						$elm$json$Json$Decode$andThen,
+						function (ack) {
+							return $elm$json$Json$Decode$succeed(
+								{ack: ack, message: message, sid: sid});
+						},
+						A2(
+							$elm$json$Json$Decode$field,
+							'ack',
+							$elm$json$Json$Decode$oneOf(
+								_List_fromArray(
+									[
+										$elm$json$Json$Decode$null($elm$core$Maybe$Nothing),
+										A2($elm$json$Json$Decode$map, $elm$core$Maybe$Just, $elm$json$Json$Decode$string)
+									]))));
+				},
+				A2($elm$json$Json$Decode$field, 'message', $elm$json$Json$Decode$string));
+		},
+		A2($elm$json$Json$Decode$field, 'sid', $elm$json$Json$Decode$string)));
+var $author$project$Main$natsOnOpen = _Platform_incomingPort('natsOnOpen', $elm$json$Json$Decode$string);
+var $author$project$Main$natsOpen = _Platform_outgoingPort(
+	'natsOpen',
+	function ($) {
+		var a = $.a;
+		var b = $.b;
+		var c = $.c;
+		return A2(
+			$elm$json$Json$Encode$list,
+			$elm$core$Basics$identity,
+			_List_fromArray(
+				[
+					$elm$json$Json$Encode$string(a),
+					$elm$json$Json$Encode$string(b),
+					$elm$json$Json$Encode$string(c)
+				]));
+	});
+var $elm$core$Maybe$destruct = F3(
+	function (_default, func, maybe) {
+		if (maybe.$ === 'Just') {
+			var a = maybe.a;
+			return func(a);
+		} else {
+			return _default;
+		}
+	});
+var $elm$json$Json$Encode$null = _Json_encodeNull;
+var $author$project$Main$natsSend = _Platform_outgoingPort(
+	'natsSend',
+	function ($) {
+		return $elm$json$Json$Encode$object(
+			_List_fromArray(
+				[
+					_Utils_Tuple2(
+					'ack',
+					function ($) {
+						return A3($elm$core$Maybe$destruct, $elm$json$Json$Encode$null, $elm$json$Json$Encode$string, $);
+					}($.ack)),
+					_Utils_Tuple2(
+					'message',
+					$elm$json$Json$Encode$string($.message)),
+					_Utils_Tuple2(
+					'sid',
+					$elm$json$Json$Encode$string($.sid))
+				]));
 	});
 var $author$project$Nats$Config$withDebug = F2(
 	function (value, cfg) {
@@ -11550,9 +12645,12 @@ var $author$project$Main$natsConfig = A2(
 		$author$project$Nats$Config$withDebug,
 		true,
 		A2(
-			$author$project$Nats$Config$string,
+			$author$project$Nats$Config$bytes,
 			$author$project$Main$NatsMsg,
-			{close: $author$project$Main$natsClose, onClose: $author$project$Main$natsOnClose, onError: $author$project$Main$natsOnError, onMessage: $author$project$Main$natsOnMessage, onOpen: $author$project$Main$natsOnOpen, open: $author$project$Main$natsOpen, send: $author$project$Main$natsSend})));
+			{close: $author$project$Main$natsClose, onAck: $author$project$Main$natsOnAck, onClose: $author$project$Main$natsOnClose, onError: $author$project$Main$natsOnError, onMessage: $author$project$Main$natsOnMessage, onOpen: $author$project$Main$natsOnOpen, open: $author$project$Main$natsOpen, send: $author$project$Main$natsSend})));
+var $author$project$Nats$Internal$Types$OnAck = function (a) {
+	return {$: 'OnAck', a: a};
+};
 var $author$project$Nats$Internal$Types$OnClose = function (a) {
 	return {$: 'OnClose', a: a};
 };
@@ -11759,6 +12857,7 @@ var $author$project$Nats$subscriptions = F2(
 						cfg.ports.onClose($author$project$Nats$Internal$Types$OnClose),
 						cfg.ports.onError($author$project$Nats$Internal$Types$OnError),
 						cfg.ports.onMessage($author$project$Nats$Internal$Types$OnMessage),
+						cfg.ports.onAck($author$project$Nats$Internal$Types$OnAck),
 						A2($elm$time$Time$every, 1000, $author$project$Nats$Internal$Types$OnTime)
 					])));
 	});
@@ -11822,50 +12921,55 @@ var $author$project$Nats$Internal$SocketState$isRequest = function (sub) {
 	}
 };
 var $author$project$Nats$Internal$SocketState$finalizeSubscriptions = function (state) {
-	var nextSubscriptions = $elm$core$Dict$values(state.nextSubscriptions);
-	return _Utils_Tuple2(
-		_Utils_update(
-			state,
-			{
-				activeSubscriptions: nextSubscriptions,
-				nextSubscriptions: A2(
-					$elm$core$Dict$filter,
-					function (_v0) {
-						return $author$project$Nats$Internal$SocketState$isRequest;
+	var _v0 = state.status;
+	if (_v0.$ === 'Connected') {
+		var nextSubscriptions = $elm$core$Dict$values(state.nextSubscriptions);
+		return _Utils_Tuple2(
+			_Utils_update(
+				state,
+				{
+					activeSubscriptions: nextSubscriptions,
+					nextSubscriptions: A2(
+						$elm$core$Dict$filter,
+						function (_v1) {
+							return $author$project$Nats$Internal$SocketState$isRequest;
+						},
+						state.nextSubscriptions)
+				}),
+			_Utils_ap(
+				A2(
+					$elm$core$List$filterMap,
+					function (sub) {
+						var _v2 = A2($author$project$Nats$Internal$SocketState$getSubscriptionByID, sub.id, state);
+						if (_v2.$ === 'Nothing') {
+							return $elm$core$Maybe$Just(
+								A3($author$project$Nats$Protocol$SUB, sub.subject, sub.group, sub.id));
+						} else {
+							return $elm$core$Maybe$Nothing;
+						}
 					},
-					state.nextSubscriptions)
-			}),
-		_Utils_ap(
-			A2(
-				$elm$core$List$filterMap,
-				function (sub) {
-					var _v1 = A2($author$project$Nats$Internal$SocketState$getSubscriptionByID, sub.id, state);
-					if (_v1.$ === 'Nothing') {
-						return $elm$core$Maybe$Just(
-							A3($author$project$Nats$Protocol$SUB, sub.subject, sub.group, sub.id));
-					} else {
-						return $elm$core$Maybe$Nothing;
-					}
-				},
-				nextSubscriptions),
-			A2(
-				$elm$core$List$filterMap,
-				function (sub) {
-					var _v2 = $elm$core$List$head(
-						A2(
-							$elm$core$List$filter,
-							function (next) {
-								return _Utils_eq(next.id, sub.id);
-							},
-							nextSubscriptions));
-					if (_v2.$ === 'Nothing') {
-						return $elm$core$Maybe$Just(
-							A2($author$project$Nats$Protocol$UNSUB, sub.id, 0));
-					} else {
-						return $elm$core$Maybe$Nothing;
-					}
-				},
-				state.activeSubscriptions)));
+					nextSubscriptions),
+				A2(
+					$elm$core$List$filterMap,
+					function (sub) {
+						var _v3 = $elm$core$List$head(
+							A2(
+								$elm$core$List$filter,
+								function (next) {
+									return _Utils_eq(next.id, sub.id);
+								},
+								nextSubscriptions));
+						if (_v3.$ === 'Nothing') {
+							return $elm$core$Maybe$Just(
+								A2($author$project$Nats$Protocol$UNSUB, sub.id, 0));
+						} else {
+							return $elm$core$Maybe$Nothing;
+						}
+					},
+					state.activeSubscriptions)));
+	} else {
+		return _Utils_Tuple2(state, _List_Nil);
+	}
 };
 var $author$project$Nats$Internal$SocketState$Sub = {$: 'Sub'};
 var $author$project$Nats$Internal$SocketState$getSubscriptionBySubjectGroup = F2(
@@ -12055,7 +13159,7 @@ var $author$project$Nats$handleSubHelper = F3(
 						$elm$core$Platform$Cmd$map,
 						cfg.parentMsg,
 						cfg.ports.open(
-							_Utils_Tuple2(props.id, props.url))));
+							_Utils_Tuple3(props.id, props.url, cfg.mode))));
 			} else {
 				return _Utils_Tuple2(oState, $elm$core$Platform$Cmd$none);
 			}
@@ -12168,6 +13272,13 @@ var $author$project$Nats$handleSub = F3(
 										$author$project$Nats$doSend,
 										cfg,
 										{
+											ack: function () {
+												if (op.$ === 'CONNECT') {
+													return $elm$core$Maybe$Just('CONNECT');
+												} else {
+													return $elm$core$Maybe$Nothing;
+												}
+											}(),
 											message: cfg.toPortMessage(
 												cfg.write(op)),
 											sid: socket.socket.id
@@ -12266,6 +13377,7 @@ var $author$project$Nats$toCmd = F3(
 								$author$project$Nats$doSend,
 								cfg,
 								{
+									ack: $elm$core$Maybe$Nothing,
 									message: cfg.toPortMessage(
 										cfg.write(
 											$author$project$Nats$Protocol$PUB(
@@ -12325,6 +13437,13 @@ var $author$project$Nats$toCmd = F3(
 												$author$project$Nats$doSend,
 												cfg,
 												{
+													ack: function () {
+														if (op.$ === 'CONNECT') {
+															return $elm$core$Maybe$Just('CONNECT');
+														} else {
+															return $elm$core$Maybe$Nothing;
+														}
+													}(),
 													message: cfg.toPortMessage(
 														cfg.write(op)),
 													sid: s
@@ -12348,12 +13467,12 @@ var $author$project$Nats$toCmd = F3(
 					A3(
 						$elm$core$List$foldl,
 						F2(
-							function (eff, _v8) {
-								var st = _v8.a;
-								var cmd = _v8.b;
-								var _v9 = A3($author$project$Nats$toCmd, cfg, eff, st);
-								var newState = _v9.a;
-								var newCmd = _v9.b;
+							function (eff, _v9) {
+								var st = _v9.a;
+								var cmd = _v9.b;
+								var _v10 = A3($author$project$Nats$toCmd, cfg, eff, st);
+								var newState = _v10.a;
+								var newCmd = _v10.b;
 								return _Utils_Tuple2(
 									newState,
 									A2($elm$core$List$cons, newCmd, cmd));
@@ -12624,6 +13743,14 @@ var $author$project$Nats$Socket$Opened = {$: 'Opened'};
 var $author$project$Nats$Events$SocketError = function (a) {
 	return {$: 'SocketError', a: a};
 };
+var $author$project$Nats$Socket$Connected = {$: 'Connected'};
+var $author$project$Nats$Internal$SocketState$setStatus = F2(
+	function (status, state) {
+		return _Utils_update(
+			state,
+			{status: status});
+	});
+var $author$project$Nats$Internal$SocketState$ackCONNECT = $author$project$Nats$Internal$SocketState$setStatus($author$project$Nats$Socket$Connected);
 var $author$project$Nats$Internal$SocketState$Closed = {$: 'Closed'};
 var $author$project$Nats$Internal$SocketState$handleTimeouts = F2(
 	function (time, state) {
@@ -12703,6 +13830,7 @@ var $author$project$Nats$Internal$SocketState$parse = F3(
 var $author$project$Nats$Protocol$CONNECT = function (a) {
 	return {$: 'CONNECT', a: a};
 };
+var $author$project$Nats$Socket$Connecting = {$: 'Connecting'};
 var $author$project$Nats$Events$SocketOpen = function (a) {
 	return {$: 'SocketOpen', a: a};
 };
@@ -12712,26 +13840,23 @@ var $author$project$Nats$Internal$SocketState$receiveOperation = F2(
 			case 'INFO':
 				var serverInfo = operation.a;
 				return _Utils_Tuple3(
-					_Utils_update(
-						state,
-						{
-							serverInfo: $elm$core$Maybe$Just(serverInfo)
-						}),
+					A2(
+						$author$project$Nats$Internal$SocketState$setStatus,
+						$author$project$Nats$Socket$Connecting,
+						_Utils_update(
+							state,
+							{
+								serverInfo: $elm$core$Maybe$Just(serverInfo)
+							})),
 					_List_fromArray(
 						[
 							state.onEvent(
 							$author$project$Nats$Events$SocketOpen(serverInfo))
 						]),
-					$elm$core$List$reverse(
-						A2(
-							$elm$core$List$cons,
-							$author$project$Nats$Protocol$CONNECT(state.connectOptions),
-							A2(
-								$elm$core$List$map,
-								function (sub) {
-									return A3($author$project$Nats$Protocol$SUB, sub.subject, sub.group, sub.id);
-								},
-								state.activeSubscriptions))));
+					_List_fromArray(
+						[
+							$author$project$Nats$Protocol$CONNECT(state.connectOptions)
+						]));
 			case 'PING':
 				return _Utils_Tuple3(
 					state,
@@ -12805,12 +13930,6 @@ var $author$project$Nats$Internal$SocketState$receive = F3(
 			var op = maybeOperation.a;
 			return A2($author$project$Nats$Internal$SocketState$receiveOperation, op, parseState);
 		}
-	});
-var $author$project$Nats$Internal$SocketState$setStatus = F2(
-	function (status, state) {
-		return _Utils_update(
-			state,
-			{status: status});
 	});
 var $author$project$Nats$Internal$SocketStateCollection$update = F3(
 	function (sid, fn, _v0) {
@@ -12913,6 +14032,13 @@ var $author$project$Nats$updateWithEffects = F3(
 											$author$project$Nats$doSend,
 											cfg,
 											{
+												ack: function () {
+													if (op.$ === 'CONNECT') {
+														return $elm$core$Maybe$Just('CONNECT');
+													} else {
+														return $elm$core$Maybe$Nothing;
+													}
+												}(),
 												message: cfg.toPortMessage(
 													cfg.write(op)),
 												sid: sid
@@ -12931,15 +14057,30 @@ var $author$project$Nats$updateWithEffects = F3(
 							$elm$core$Platform$Cmd$none);
 					}
 				}
+			case 'OnAck':
+				var sid = msg.a.sid;
+				var ack = msg.a.ack;
+				return A4(
+					$author$project$Nats$updateSocket,
+					cfg,
+					sid,
+					function (socket) {
+						return _Utils_Tuple3(
+							$elm$core$Maybe$Just(
+								$author$project$Nats$Internal$SocketState$ackCONNECT(socket)),
+							_List_Nil,
+							$elm$core$Platform$Cmd$none);
+					},
+					oState);
 			default:
 				var time = msg.a;
 				var msTime = $elm$time$Time$posixToMillis(time);
-				var _v5 = A2(
+				var _v6 = A2(
 					$author$project$Nats$Internal$SocketStateCollection$mapWithEffect,
 					$author$project$Nats$Internal$SocketState$handleTimeouts(msTime),
 					state.sockets);
-				var sockets = _v5.a;
-				var msgs = _v5.b;
+				var sockets = _v6.a;
+				var msgs = _v6.b;
 				return _Utils_Tuple3(
 					$author$project$Nats$State(
 						_Utils_update(
@@ -12995,10 +14136,22 @@ var $author$project$SubComp$update = F2(
 					_Utils_update(
 						model,
 						{
-							received: A2(
-								$elm$core$List$cons,
-								$elm$core$String$fromInt(n) + (': ' + data),
-								model.received)
+							received: function () {
+								var _v1 = A2(
+									$elm$bytes$Bytes$Decode$decode,
+									$elm$bytes$Bytes$Decode$string(
+										$elm$bytes$Bytes$width(data)),
+									data);
+								if (_v1.$ === 'Just') {
+									var s = _v1.a;
+									return A2(
+										$elm$core$List$cons,
+										$elm$core$String$fromInt(n) + (': ' + s),
+										model.received);
+								} else {
+									return A2($elm$core$List$cons, 'could not decode message', model.received);
+								}
+							}()
 						}),
 					$author$project$Nats$Effect$none,
 					$elm$core$Platform$Cmd$none);
@@ -13048,12 +14201,26 @@ var $author$project$Main$update = F2(
 				var message = msg.a;
 				return _Utils_Tuple3(
 					model,
-					A2($author$project$Nats$publish, message.replyTo, 'Hello ' + (message.data + '!')),
+					A2(
+						$author$project$Nats$publish,
+						message.replyTo,
+						$elm$bytes$Bytes$Encode$encode(
+							$elm$bytes$Bytes$Encode$sequence(
+								_List_fromArray(
+									[
+										$elm$bytes$Bytes$Encode$string('Hello '),
+										$elm$bytes$Bytes$Encode$bytes(message.data),
+										$elm$bytes$Bytes$Encode$string('!')
+									])))),
 					$elm$core$Platform$Cmd$none);
 			case 'Publish':
 				return _Utils_Tuple3(
 					model,
-					A2($author$project$Nats$publish, 'test.subject', 'Hi'),
+					A2(
+						$author$project$Nats$publish,
+						'test.subject',
+						$elm$bytes$Bytes$Encode$encode(
+							$elm$bytes$Bytes$Encode$string('Hi'))),
 					$elm$core$Platform$Cmd$none);
 			case 'InputText':
 				var text = msg.a;
@@ -13066,7 +14233,12 @@ var $author$project$Main$update = F2(
 			case 'SendRequest':
 				return _Utils_Tuple3(
 					model,
-					A3($author$project$Nats$request, 'say.hello.to.me', model.inputText, $author$project$Main$receiveResponse),
+					A3(
+						$author$project$Nats$request,
+						'say.hello.to.me',
+						$elm$bytes$Bytes$Encode$encode(
+							$elm$bytes$Bytes$Encode$string(model.inputText)),
+						$author$project$Main$receiveResponse),
 					$elm$core$Platform$Cmd$none);
 			case 'RequestError':
 				return _Utils_Tuple3(
@@ -13083,7 +14255,19 @@ var $author$project$Main$update = F2(
 					_Utils_update(
 						model,
 						{
-							response: $elm$core$Maybe$Just(response)
+							response: function () {
+								var _v3 = A2(
+									$elm$bytes$Bytes$Decode$decode,
+									$elm$bytes$Bytes$Decode$string(
+										$elm$bytes$Bytes$width(response)),
+									response);
+								if (_v3.$ === 'Just') {
+									var s = _v3.a;
+									return $elm$core$Maybe$Just(s);
+								} else {
+									return $elm$core$Maybe$Just('could not decode response');
+								}
+							}()
 						}),
 					$author$project$Nats$Effect$none,
 					$elm$core$Platform$Cmd$none);
@@ -13513,4 +14697,4 @@ _Platform_export({'Main':{'init':$author$project$Main$main(
 			return $elm$json$Json$Decode$succeed(
 				{now: now});
 		},
-		A2($elm$json$Json$Decode$field, 'now', $elm$json$Json$Decode$int)))({"versions":{"elm":"0.19.1"},"types":{"message":"Main.Msg","aliases":{"Nats.Protocol.Message":{"args":["datatype"],"type":"{ subject : String.String, replyTo : String.String, size : Basics.Int, data : datatype }"},"Nats.Msg":{"args":["msg"],"type":"Nats.Internal.Types.Msg msg"},"Nats.Protocol.ServerInfo":{"args":[],"type":"{ server_id : String.String, version : String.String, go : String.String, host : String.String, port_ : Basics.Int, auth_required : Basics.Bool, max_payload : Basics.Int }"},"Nats.PortsAPI.Message":{"args":[],"type":"{ sid : String.String, message : String.String }"}},"unions":{"Main.Msg":{"args":[],"tags":{"NoOp":[],"NatsMsg":["Nats.Msg Main.Msg"],"SubCompMsg":["SubComp.Msg"],"NatsConnect":["Nats.Protocol.ServerInfo"],"OnSocketEvent":["Nats.Events.SocketEvent"],"Publish":[],"InputText":["String.String"],"SendRequest":[],"RequestError":[],"ReceiveResponse":["String.String"],"HandleRequest":["Nats.Protocol.Message String.String"]}},"Basics.Bool":{"args":[],"tags":{"True":[],"False":[]}},"Basics.Int":{"args":[],"tags":{"Int":[]}},"Nats.Internal.Types.Msg":{"args":["msg"],"tags":{"OnOpen":["String.String"],"OnClose":["String.String"],"OnError":["Nats.PortsAPI.Message"],"OnMessage":["Nats.PortsAPI.Message"],"OnTime":["Time.Posix"]}},"SubComp.Msg":{"args":[],"tags":{"Subscribe":[],"Unsubscribe":[],"Receive":["Basics.Int","String.String"]}},"Nats.Events.SocketEvent":{"args":[],"tags":{"SocketOpen":["Nats.Protocol.ServerInfo"],"SocketClose":[],"SocketError":["String.String"]}},"String.String":{"args":[],"tags":{"String":[]}},"Time.Posix":{"args":[],"tags":{"Posix":["Basics.Int"]}}}}})}});}(this));
+		A2($elm$json$Json$Decode$field, 'now', $elm$json$Json$Decode$int)))({"versions":{"elm":"0.19.1"},"types":{"message":"Main.Msg","aliases":{"Nats.Protocol.Message":{"args":["datatype"],"type":"{ subject : String.String, replyTo : String.String, size : Basics.Int, data : datatype }"},"Nats.Msg":{"args":["msg"],"type":"Nats.Internal.Types.Msg msg"},"Nats.Protocol.ServerInfo":{"args":[],"type":"{ server_id : String.String, version : String.String, go : String.String, host : String.String, port_ : Basics.Int, auth_required : Basics.Bool, max_payload : Basics.Int }"},"Nats.PortsAPI.Ack":{"args":[],"type":"{ sid : String.String, ack : String.String }"},"Nats.PortsAPI.Message":{"args":[],"type":"{ sid : String.String, ack : Maybe.Maybe String.String, message : String.String }"}},"unions":{"Main.Msg":{"args":[],"tags":{"NoOp":[],"NatsMsg":["Nats.Msg Main.Msg"],"SubCompMsg":["SubComp.Msg"],"NatsConnect":["Nats.Protocol.ServerInfo"],"OnSocketEvent":["Nats.Events.SocketEvent"],"Publish":[],"InputText":["String.String"],"SendRequest":[],"RequestError":[],"ReceiveResponse":["Bytes.Bytes"],"HandleRequest":["Nats.Protocol.Message Bytes.Bytes"]}},"Basics.Bool":{"args":[],"tags":{"True":[],"False":[]}},"Bytes.Bytes":{"args":[],"tags":{"Bytes":[]}},"Basics.Int":{"args":[],"tags":{"Int":[]}},"Nats.Internal.Types.Msg":{"args":["msg"],"tags":{"OnOpen":["String.String"],"OnClose":["String.String"],"OnError":["{ sid : String.String, message : String.String }"],"OnMessage":["Nats.PortsAPI.Message"],"OnAck":["Nats.PortsAPI.Ack"],"OnTime":["Time.Posix"]}},"SubComp.Msg":{"args":[],"tags":{"Subscribe":[],"Unsubscribe":[],"Receive":["Basics.Int","Bytes.Bytes"]}},"Nats.Events.SocketEvent":{"args":[],"tags":{"SocketOpen":["Nats.Protocol.ServerInfo"],"SocketClose":[],"SocketError":["String.String"]}},"String.String":{"args":[],"tags":{"String":[]}},"Maybe.Maybe":{"args":["a"],"tags":{"Just":["a"],"Nothing":[]}},"Time.Posix":{"args":[],"tags":{"Posix":["Basics.Int"]}}}}})}});}(this));

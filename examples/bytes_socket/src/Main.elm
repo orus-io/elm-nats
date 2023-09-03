@@ -16,13 +16,16 @@ import Nats.Sub
 import Random
 import SubComp
 import Time
+import Bytes exposing (Bytes)
+import Bytes.Encode
+import Bytes.Decode
 
 
 
 ---- PORTS ----
 
 
-port natsOpen : ( String, String ) -> Cmd msg
+port natsOpen : ( String, String, String ) -> Cmd msg
 
 
 port natsClose : String -> Cmd msg
@@ -40,18 +43,22 @@ port natsOnError : ({ sid : String, message : String } -> msg) -> Sub msg
 port natsOnMessage : (Nats.PortsAPI.Message -> msg) -> Sub msg
 
 
+port natsOnAck : (Nats.PortsAPI.Ack -> msg) -> Sub msg
+
+
 port natsSend : Nats.PortsAPI.Message -> Cmd msg
 
 
-natsConfig : Nats.Config.Config String Msg
+natsConfig : Nats.Config.Config Bytes Msg
 natsConfig =
-    Nats.Config.string NatsMsg
+    Nats.Config.bytes NatsMsg
         { open = natsOpen
         , close = natsClose
         , onOpen = natsOnOpen
         , onClose = natsOnClose
         , onError = natsOnError
         , onMessage = natsOnMessage
+        , onAck = natsOnAck
         , send = natsSend
         }
         |> Nats.Config.withDebug True
@@ -63,7 +70,7 @@ natsConfig =
 
 
 type alias Model =
-    { nats : Nats.State String Msg
+    { nats : Nats.State Bytes Msg
     , socket : Nats.Socket.Socket
     , serverInfo : Maybe Nats.Protocol.ServerInfo
     , subcomp : SubComp.Model
@@ -90,7 +97,7 @@ init flags =
     )
 
 
-applyNatsEffect : Nats.Effect String Msg -> Model -> ( Model, Cmd Msg )
+applyNatsEffect : Nats.Effect Bytes Msg -> Model -> ( Model, Cmd Msg )
 applyNatsEffect effect model =
     let
         ( nats, cmd ) =
@@ -116,11 +123,11 @@ type Msg
     | InputText String
     | SendRequest
     | RequestError
-    | ReceiveResponse String
-    | HandleRequest (Nats.Protocol.Message String)
+    | ReceiveResponse Bytes
+    | HandleRequest (Nats.Protocol.Message Bytes)
 
 
-receiveResponse : Result Timeout String -> Msg
+receiveResponse : Result Timeout Bytes -> Msg
 receiveResponse result =
     case result of
         Ok message ->
@@ -130,7 +137,7 @@ receiveResponse result =
             RequestError
 
 
-natsSubscriptions : Model -> Nats.Sub String Msg
+natsSubscriptions : Model -> Nats.Sub Bytes Msg
 natsSubscriptions model =
     Nats.Sub.batch
     [
@@ -159,7 +166,7 @@ updateWrapper msg model =
     ( model2, Cmd.batch [ cmd, natsCmd ] )
 
 
-update : Msg -> Model -> ( Model, Nats.Effect String Msg, Cmd Msg )
+update : Msg -> Model -> ( Model, Nats.Effect Bytes Msg, Cmd Msg )
 update msg model =
     case msg of
         NatsMsg natsMsg ->
@@ -210,13 +217,23 @@ update msg model =
         -}
         HandleRequest message ->
                ( model
-               , Nats.publish message.replyTo ("Hello " ++ message.data ++ "!")
+               , Nats.publish message.replyTo (
+                   [
+                   Bytes.Encode.string "Hello "
+                   , Bytes.Encode.bytes message.data
+                   , Bytes.Encode.string "!"
+                   ] |> Bytes.Encode.sequence
+                   |> Bytes.Encode.encode)
                , Cmd.none
                )
 
         Publish ->
             ( model
-            , Nats.publish "test.subject" "Hi"
+            ,
+            "Hi"
+            |> Bytes.Encode.string
+            |> Bytes.Encode.encode
+            |> Nats.publish "test.subject" 
             , Cmd.none
             )
 
@@ -230,7 +247,11 @@ update msg model =
 
         SendRequest ->
            ( model
-           , Nats.request "say.hello.to.me" model.inputText receiveResponse
+           , Nats.request "say.hello.to.me" (
+               model.inputText
+                   |> Bytes.Encode.string
+                   |> Bytes.Encode.encode
+               ) receiveResponse
            , Cmd.none
            )
 
@@ -241,7 +262,13 @@ update msg model =
            )
 
         ReceiveResponse response ->
-           ( { model | response = Just response }
+           ( { model | response =
+               case Bytes.Decode.decode (Bytes.Decode.string (Bytes.width response)) response of
+                    Just s ->
+                       Just s
+                    Nothing ->
+                        Just "could not decode response"
+                }
            , Nats.Effect.none
            , Cmd.none
            )

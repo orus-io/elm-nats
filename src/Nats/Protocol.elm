@@ -14,6 +14,7 @@ module Nats.Protocol exposing
 
 import Base64.Encode
 import Bytes exposing (Bytes)
+import Bytes.Decode
 import Bytes.Encode
 import Json.Decode as JsonD
 import Json.Decode.Pipeline as JsonDP
@@ -196,8 +197,8 @@ splitFirstLine s =
             ( String.left i s, String.dropLeft (i + 2) s )
 
 
-parseCommand : String -> Result String (Operation String)
-parseCommand c =
+parseCommand : datatype -> String -> Result String (Operation datatype)
+parseCommand empty c =
     case c of
         "PING" ->
             Ok PING
@@ -228,7 +229,7 @@ parseCommand c =
                                 { subject = msg.subject
                                 , replyTo = msg.replyTo
                                 , size = msg.size
-                                , data = ""
+                                , data = empty
                                 }
 
                     Result.Err err ->
@@ -273,7 +274,7 @@ parseString str partialOp =
                 ( firstLine, payload ) =
                     splitFirstLine str
             in
-            case parseCommand firstLine of
+            case parseCommand "" firstLine of
                 Err err ->
                     Error err
 
@@ -304,9 +305,134 @@ parseString str partialOp =
                     Operation op
 
 
+findStringInBytes : String -> Bytes -> Maybe Int
+findStringInBytes s =
+    let
+        charList =
+            String.toList s
+
+        stringLen =
+            String.length s
+
+        step :
+            ( List Char, Int )
+            -> Bytes.Decode.Decoder (Bytes.Decode.Step ( List Char, Int ) (Maybe Int))
+        step ( currentMatch, index ) =
+            Bytes.Decode.string 1
+                |> Bytes.Decode.map
+                    (\chars ->
+                        case ( String.toList chars, currentMatch ) of
+                            ( [ next ], [ expected ] ) ->
+                                if next == expected then
+                                    index
+                                        - stringLen
+                                        + 1
+                                        |> Just
+                                        |> Bytes.Decode.Done
+
+                                else
+                                    Bytes.Decode.Loop ( charList, index + 1 )
+
+                            ( [ next ], expected :: tail ) ->
+                                if next == expected then
+                                    Bytes.Decode.Loop ( tail, index + 1 )
+
+                                else
+                                    Bytes.Decode.Loop ( charList, index + 1 )
+
+                            _ ->
+                                Bytes.Decode.Done Nothing
+                    )
+    in
+    Bytes.Decode.decode
+        (Bytes.Decode.loop ( charList, 0 ) step)
+        >> Maybe.andThen identity
+
+
 parseBytes : Bytes -> Maybe (PartialOperation Bytes) -> OperationResult Bytes
 parseBytes data partial =
-    Error ""
+    case partial of
+        Just (PartialOperation msg) ->
+            let
+                body =
+                    Bytes.Encode.sequence
+                        [ Bytes.Encode.bytes msg.data
+                        , Bytes.Encode.bytes data
+                        ]
+                        |> Bytes.Encode.encode
+
+                bodyWidth =
+                    Bytes.width body
+            in
+            if bodyWidth == msg.size + 2 then
+                Operation <|
+                    MSG msg.sid
+                        { subject = msg.subject
+                        , replyTo = msg.replyTo
+                        , size = msg.size
+                        , data = body
+                        }
+
+            else if bodyWidth > msg.size + 2 then
+                Error "message payload is too big"
+
+            else
+                Partial <| PartialOperation <| { msg | data = body }
+
+        Nothing ->
+            case findStringInBytes cr data of
+                Nothing ->
+                    Error "Could not find CR separator"
+
+                Just index ->
+                    Bytes.Decode.decode
+                        (Bytes.Decode.string index
+                            |> Bytes.Decode.andThen
+                                (\s ->
+                                    case parseCommand emptyBytes s of
+                                        Ok (MSG sid msg) ->
+                                            let
+                                                payloadWidth =
+                                                    Bytes.width data - (index + 2)
+                                            in
+                                            if msg.size + 2 < payloadWidth then
+                                                Bytes.Decode.fail
+
+                                            else if msg.size + 2 == payloadWidth then
+                                                Bytes.Decode.map2
+                                                    (\_ payload ->
+                                                        Operation <|
+                                                            MSG sid { msg | data = payload }
+                                                    )
+                                                    (Bytes.Decode.bytes 2)
+                                                    (Bytes.Decode.bytes msg.size)
+
+                                            else
+                                                Bytes.Decode.map2
+                                                    (\_ payload ->
+                                                        Partial <|
+                                                            PartialOperation
+                                                                { sid = sid
+                                                                , subject = msg.subject
+                                                                , replyTo = msg.replyTo
+                                                                , size = msg.size
+                                                                , data = payload
+                                                                }
+                                                    )
+                                                    (Bytes.Decode.bytes 2)
+                                                    (Bytes.Decode.bytes payloadWidth)
+
+                                        Ok any ->
+                                            Bytes.Decode.succeed <|
+                                                Operation any
+
+                                        Err err ->
+                                            Bytes.Decode.succeed <|
+                                                Error err
+                                )
+                        )
+                        data
+                        |> Maybe.withDefault (Error "could not decode input")
 
 
 encodeConnect : ConnectOptions -> JsonE.Value
@@ -466,7 +592,7 @@ cr =
 
 stringBytes : String -> Bytes
 stringBytes str =
-    Bytes.Encode.string ""
+    Bytes.Encode.string str
         |> Bytes.Encode.encode
 
 

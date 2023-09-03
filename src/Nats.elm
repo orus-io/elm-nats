@@ -11,7 +11,7 @@ module Nats exposing
 {-| A nats.io client for Elm
 
 
-# pub/sub/request
+# pub/sub/requestack : data.ack
 
 @docs open
 
@@ -100,6 +100,7 @@ subscriptions cfg _ =
         , cfg.ports.onClose Types.OnClose
         , cfg.ports.onError Types.OnError
         , cfg.ports.onMessage Types.OnMessage
+        , cfg.ports.onAck Types.OnAck
         , Time.every 1000 Types.OnTime
         ]
         |> Sub.map cfg.parentMsg
@@ -244,6 +245,13 @@ updateWithEffects cfg msg ((State state) as oState) =
                                 |> List.map
                                     (\op ->
                                         { sid = sid
+                                        , ack =
+                                            case op of
+                                                Protocol.CONNECT _ ->
+                                                    Just "CONNECT"
+
+                                                _ ->
+                                                    Nothing
                                         , message =
                                             cfg.write op
                                                 |> cfg.toPortMessage
@@ -259,6 +267,17 @@ updateWithEffects cfg msg ((State state) as oState) =
                               ]
                             , Cmd.none
                             )
+
+        Types.OnAck { sid, ack } ->
+            updateSocket cfg
+                sid
+                (\socket ->
+                    ( Just <| SocketState.ackCONNECT socket
+                    , []
+                    , Cmd.none
+                    )
+                )
+                oState
 
         Types.OnTime time ->
             let
@@ -305,6 +324,7 @@ toCmd cfg effect ((State state) as oState) =
                     ( oState
                     , doSend cfg
                         { sid = s
+                        , ack = Nothing
                         , message =
                             Protocol.PUB
                                 { subject = subject
@@ -355,6 +375,13 @@ toCmd cfg effect ((State state) as oState) =
                                                 (\op ->
                                                     doSend cfg
                                                         { sid = s
+                                                        , ack =
+                                                            case op of
+                                                                Protocol.CONNECT _ ->
+                                                                    Just "CONNECT"
+
+                                                                _ ->
+                                                                    Nothing
                                                         , message =
                                                             cfg.write op
                                                                 |> cfg.toPortMessage
@@ -409,6 +436,13 @@ handleSub cfg (Sub subList) state =
                                     (\op ->
                                         doSend cfg
                                             { sid = socket.socket.id
+                                            , ack =
+                                                case op of
+                                                    Protocol.CONNECT _ ->
+                                                        Just "CONNECT"
+
+                                                    _ ->
+                                                        Nothing
                                             , message =
                                                 cfg.write op
                                                     |> cfg.toPortMessage
@@ -454,7 +488,7 @@ handleSubHelper cfg sub ((State state) as oState) =
                                         else
                                             Just id
                         }
-                    , cfg.ports.open ( props.id, props.url )
+                    , cfg.ports.open ( props.id, props.url, cfg.mode )
                         |> Cmd.map cfg.parentMsg
                     )
 

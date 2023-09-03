@@ -25,6 +25,7 @@ type alias Config datatype msg =
     , debug : Bool
     , debugLog : String -> String -> String
     , size : datatype -> Int
+    , mode : String
     , parse : datatype -> Maybe (Protocol.PartialOperation datatype) -> Protocol.OperationResult datatype
     , write : Protocol.Operation datatype -> datatype
     , fromPortMessage : String -> Result String datatype
@@ -51,6 +52,7 @@ string parentMsg ports =
     , ports = ports
     , debug = False
     , debugLog = \_ s -> s
+    , mode = "text"
     , parse = Protocol.parseString
     , size = String.length
     , write = Protocol.toString
@@ -78,6 +80,7 @@ bytes parentMsg ports =
     , ports = ports
     , debug = False
     , debugLog = \_ s -> s
+    , mode = "binary"
     , parse = Protocol.parseBytes
     , size = Bytes.width
     , write = Protocol.toBytes
