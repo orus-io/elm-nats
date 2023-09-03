@@ -61,7 +61,7 @@ natsConfig =
         , onAck = natsOnAck
         , send = natsSend
         }
-        |> Nats.Config.withDebug True
+        |> Nats.Config.withDebug False
 
 
 

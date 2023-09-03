@@ -59,7 +59,11 @@ function setupNatsPorts(app) {
                         }
                     );
                 };
-                reader.readAsText(event.data);
+                if (socket.mode == "binary") {
+                    reader.readAsBinaryString(event.data)
+                } else {
+                    reader.readAsText(event.data);
+                }
             };
         } catch (exception) {
             console.error(exception);

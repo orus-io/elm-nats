@@ -12634,7 +12634,7 @@ var $author$project$Nats$Config$withDebug = F2(
 	});
 var $author$project$Main$natsConfig = A2(
 	$author$project$Nats$Config$withDebug,
-	true,
+	false,
 	A2(
 		$author$project$Nats$Config$bytes,
 		$author$project$Main$NatsMsg,
