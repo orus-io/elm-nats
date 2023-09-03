@@ -1,30 +1,40 @@
 function setupNatsPorts(app) {
     let sockets = {};
 
-    app.ports.natsOpen.subscribe(function(data) {
-        const sid = data[0]
-        const url = data[1]
-        const mode = data[2]
+    app.ports.natsOpen.subscribe(function(socket) {
+        const sid = socket.sid;
 
         try {
-            let socket = new WebSocket(url);
+            let webSocket = new WebSocket(socket.url);
+            if (socket.debug) {
+                console.log("socket", sid, "connecting to", socket.url, "in", socket.mode, "mode")
+            }
 
-            socket.onopen = function(event) {
+            webSocket.onopen = function(event) {
                 sockets[sid] = {
-                    socket: socket,
-                    mode: mode
+                    socket: webSocket,
+                    mode: socket.mode,
+                    debug: socket.debug
                 };
-                console.log("opened")
+                if (socket.debug) {
+                    console.log("socket", sid, "onopen") 
+                }
                 app.ports.natsOnOpen.send(sid);
             };
 
-            socket.onclose = function(event) {
+            webSocket.onclose = function(event) {
                 socket[sid] = undefined;
+                if (socket.debug) {
+                    console.log("socket", sid, "onclose") 
+                }
                 app.ports.natsOnClose.send(sid);
             };
 
-            socket.onerror = function(event) {
+            webSocket.onerror = function(event) {
                 socket[sid] = undefined;
+                if (socket.debug) {
+                    console.log("socket", sid, "onerror: ", event.data) 
+                }
                 app.ports.natsOnError.send(
                     { sid : sid
                     , message : event.data
@@ -32,14 +42,15 @@ function setupNatsPorts(app) {
                 );
             };
 
-            socket.onmessage = function(event) {
+            webSocket.onmessage = function(event) {
                 var reader = new FileReader();
                 reader.onload = function () {
                     let message = reader.result
-                    console.log("received", message)
-                    if (mode == "binary") {
+                    if (socket.debug) {
+                        console.log("socket", sid, "received", message)
+                    }
+                    if (socket.mode == "binary") {
                         message = btoa(message)
-                        console.log("b64", message)
                     }
                     app.ports.natsOnMessage.send(
                         { sid: sid
@@ -59,16 +70,20 @@ function setupNatsPorts(app) {
         const sid = data.sid;
 
         const socket = sockets[sid];
-        console.log("natsSend", sid, socket, data.ack);
 
         if (socket) {
             let message = data.message;
             if (socket.mode == "binary") {
                 message = atob(message)
             }
-            console.log("sending", message);
+            if(socket.debug) {
+                console.log("socket", sid, "sending", message);
+            }
             socket.socket.send(message);
             if (data.ack !== null) {
+                if(socket.debug) {
+                    console.log("socket", sid, "returning ack", data.ack);
+                }
                 app.ports.natsOnAck.send(
                     { sid : sid
                     , ack : data.ack

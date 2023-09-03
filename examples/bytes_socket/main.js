@@ -11152,7 +11152,7 @@ var $author$project$Nats$Internal$Types$Socket = function (a) {
 var $author$project$Nats$Socket$new = F2(
 	function (sid, url) {
 		return $author$project$Nats$Internal$Types$Socket(
-			{_default: false, id: sid, url: url});
+			{debug: false, _default: false, id: sid, url: url});
 	});
 var $author$project$Main$init = function (flags) {
 	var nats = A2(
@@ -12498,10 +12498,6 @@ var $author$project$Nats$Config$bytes = F2(
 	function (parentMsg, ports) {
 		return {
 			debug: false,
-			debugLog: F2(
-				function (_v0, s) {
-					return s;
-				}),
 			fromPortMessage: A2(
 				$elm$core$Basics$composeR,
 				$chelovek0v$bbase64$Base64$Decode$decode($chelovek0v$bbase64$Base64$Decode$bytes),
@@ -12514,6 +12510,7 @@ var $author$project$Nats$Config$bytes = F2(
 						}
 					})),
 			mode: 'binary',
+			onError: $elm$core$Maybe$Nothing,
 			parentMsg: parentMsg,
 			parse: $author$project$Nats$Protocol$parseBytes,
 			ports: ports,
@@ -12522,7 +12519,6 @@ var $author$project$Nats$Config$bytes = F2(
 			write: $author$project$Nats$Protocol$toBytes
 		};
 	});
-var $elm$core$Debug$log = _Debug_log;
 var $author$project$Main$natsClose = _Platform_outgoingPort('natsClose', $elm$json$Json$Encode$string);
 var $author$project$Main$natsOnAck = _Platform_incomingPort(
 	'natsOnAck',
@@ -12584,17 +12580,21 @@ var $author$project$Main$natsOnOpen = _Platform_incomingPort('natsOnOpen', $elm$
 var $author$project$Main$natsOpen = _Platform_outgoingPort(
 	'natsOpen',
 	function ($) {
-		var a = $.a;
-		var b = $.b;
-		var c = $.c;
-		return A2(
-			$elm$json$Json$Encode$list,
-			$elm$core$Basics$identity,
+		return $elm$json$Json$Encode$object(
 			_List_fromArray(
 				[
-					$elm$json$Json$Encode$string(a),
-					$elm$json$Json$Encode$string(b),
-					$elm$json$Json$Encode$string(c)
+					_Utils_Tuple2(
+					'debug',
+					$elm$json$Json$Encode$bool($.debug)),
+					_Utils_Tuple2(
+					'mode',
+					$elm$json$Json$Encode$string($.mode)),
+					_Utils_Tuple2(
+					'sid',
+					$elm$json$Json$Encode$string($.sid)),
+					_Utils_Tuple2(
+					'url',
+					$elm$json$Json$Encode$string($.url))
 				]));
 	});
 var $elm$core$Maybe$destruct = F3(
@@ -12632,22 +12632,13 @@ var $author$project$Nats$Config$withDebug = F2(
 			cfg,
 			{debug: value});
 	});
-var $author$project$Nats$Config$withDebugLog = F2(
-	function (debugLog, cfg) {
-		return _Utils_update(
-			cfg,
-			{debugLog: debugLog});
-	});
 var $author$project$Main$natsConfig = A2(
-	$author$project$Nats$Config$withDebugLog,
-	$elm$core$Debug$log,
+	$author$project$Nats$Config$withDebug,
+	true,
 	A2(
-		$author$project$Nats$Config$withDebug,
-		true,
-		A2(
-			$author$project$Nats$Config$bytes,
-			$author$project$Main$NatsMsg,
-			{close: $author$project$Main$natsClose, onAck: $author$project$Main$natsOnAck, onClose: $author$project$Main$natsOnClose, onError: $author$project$Main$natsOnError, onMessage: $author$project$Main$natsOnMessage, onOpen: $author$project$Main$natsOnOpen, open: $author$project$Main$natsOpen, send: $author$project$Main$natsSend})));
+		$author$project$Nats$Config$bytes,
+		$author$project$Main$NatsMsg,
+		{close: $author$project$Main$natsClose, onAck: $author$project$Main$natsOnAck, onClose: $author$project$Main$natsOnClose, onError: $author$project$Main$natsOnError, onMessage: $author$project$Main$natsOnMessage, onOpen: $author$project$Main$natsOnOpen, open: $author$project$Main$natsOpen, send: $author$project$Main$natsSend}));
 var $author$project$Nats$Internal$Types$OnAck = function (a) {
 	return {$: 'OnAck', a: a};
 };
@@ -12866,7 +12857,6 @@ var $author$project$Main$subscriptions = function (model) {
 };
 var $author$project$Nats$doSend = F2(
 	function (cfg, message) {
-		var _v0 = A2(cfg.debugLog, 'sending to ' + message.sid, message.message);
 		return cfg.ports.send(message);
 	});
 var $author$project$Nats$Protocol$SUB = F3(
@@ -13082,6 +13072,22 @@ var $author$project$Nats$Internal$SocketStateCollection$insert = F2(
 				socket,
 				A2($author$project$Nats$Internal$SocketStateCollection$internalRemove, socket.socket.id, list)));
 	});
+var $author$project$Nats$logError = F2(
+	function (cfg, err) {
+		return A2(
+			$elm$core$Maybe$withDefault,
+			$elm$core$Platform$Cmd$none,
+			A2(
+				$elm$core$Maybe$map,
+				function (onError) {
+					return A2(
+						$elm$core$Task$perform,
+						$elm$core$Basics$identity,
+						$elm$core$Task$succeed(
+							onError(err)));
+				},
+				cfg.onError));
+	});
 var $author$project$Nats$Internal$SocketStateCollection$removeByID = F2(
 	function (sid, _v0) {
 		var list = _v0.a;
@@ -13159,7 +13165,7 @@ var $author$project$Nats$handleSubHelper = F3(
 						$elm$core$Platform$Cmd$map,
 						cfg.parentMsg,
 						cfg.ports.open(
-							_Utils_Tuple3(props.id, props.url, cfg.mode))));
+							{debug: props.debug || cfg.debug, mode: cfg.mode, sid: props.id, url: props.url})));
 			} else {
 				return _Utils_Tuple2(oState, $elm$core$Platform$Cmd$none);
 			}
@@ -13173,11 +13179,12 @@ var $author$project$Nats$handleSubHelper = F3(
 				A2($elm$core$Maybe$withDefault, '', state.defaultSocket),
 				sid);
 			if (_v3 === '') {
-				var _v4 = A2(cfg.debugLog, 'cannot subscribe', 'Could not determine the sid');
-				return _Utils_Tuple2(oState, $elm$core$Platform$Cmd$none);
+				return _Utils_Tuple2(
+					oState,
+					A2($author$project$Nats$logError, cfg, 'cannot subscribe: Could not determine the sid'));
 			} else {
 				var s = _v3;
-				var _v5 = A4(
+				var _v4 = A4(
 					$author$project$Nats$updateSocket,
 					cfg,
 					s,
@@ -13189,7 +13196,7 @@ var $author$project$Nats$handleSubHelper = F3(
 							$elm$core$Platform$Cmd$none);
 					},
 					oState);
-				var newState = _v5.a;
+				var newState = _v4.a;
 				return _Utils_Tuple2(newState, $elm$core$Platform$Cmd$none);
 			}
 		}
@@ -13364,8 +13371,9 @@ var $author$project$Nats$toCmd = F3(
 					A2($elm$core$Maybe$withDefault, '', state.defaultSocket),
 					sid);
 				if (_v1 === '') {
-					var _v2 = A2(cfg.debugLog, 'cannot publish message', 'Could not determine the sid');
-					return _Utils_Tuple2(oState, $elm$core$Platform$Cmd$none);
+					return _Utils_Tuple2(
+						oState,
+						A2($author$project$Nats$logError, cfg, 'cannot publish message: Could not determine the sid'));
 				} else {
 					var s = _v1;
 					return _Utils_Tuple2(
@@ -13396,24 +13404,25 @@ var $author$project$Nats$toCmd = F3(
 				var message = effect.a.message;
 				var onResponse = effect.a.onResponse;
 				var timeout = effect.a.timeout;
-				var _v3 = A2(
+				var _v2 = A2(
 					$elm$core$Maybe$withDefault,
 					A2($elm$core$Maybe$withDefault, '', state.defaultSocket),
 					sid);
-				if (_v3 === '') {
-					var _v4 = A2(cfg.debugLog, 'cannot publish message', 'Could not determine the sid');
-					return _Utils_Tuple2(oState, $elm$core$Platform$Cmd$none);
+				if (_v2 === '') {
+					return _Utils_Tuple2(
+						oState,
+						A2($author$project$Nats$logError, cfg, 'cannot publish request: Could not determine the sid'));
 				} else {
-					var s = _v3;
-					var _v5 = $author$project$Nats$nextInbox(oState);
-					var inbox = _v5.a;
-					var state1 = _v5.b;
-					var _v6 = A4(
+					var s = _v2;
+					var _v3 = $author$project$Nats$nextInbox(oState);
+					var inbox = _v3.a;
+					var state1 = _v3.b;
+					var _v4 = A4(
 						$author$project$Nats$updateSocket,
 						cfg,
 						s,
 						function (socket) {
-							var _v7 = A3(
+							var _v5 = A3(
 								$author$project$Nats$Internal$SocketState$addRequest,
 								cfg,
 								{
@@ -13424,8 +13433,8 @@ var $author$project$Nats$toCmd = F3(
 									subject: subject
 								},
 								socket);
-							var newSocket = _v7.a;
-							var ops = _v7.b;
+							var newSocket = _v5.a;
+							var ops = _v5.b;
 							return _Utils_Tuple3(
 								$elm$core$Maybe$Just(newSocket),
 								_List_Nil,
@@ -13452,9 +13461,8 @@ var $author$project$Nats$toCmd = F3(
 										ops)));
 						},
 						state1);
-					var nextState = _v6.a;
-					var msg = _v6.b;
-					var cmd = _v6.c;
+					var nextState = _v4.a;
+					var cmd = _v4.c;
 					return _Utils_Tuple2(
 						nextState,
 						A2($elm$core$Platform$Cmd$map, cfg.parentMsg, cmd));
@@ -13467,12 +13475,12 @@ var $author$project$Nats$toCmd = F3(
 					A3(
 						$elm$core$List$foldl,
 						F2(
-							function (eff, _v9) {
-								var st = _v9.a;
-								var cmd = _v9.b;
-								var _v10 = A3($author$project$Nats$toCmd, cfg, eff, st);
-								var newState = _v10.a;
-								var newCmd = _v10.b;
+							function (eff, _v7) {
+								var st = _v7.a;
+								var cmd = _v7.b;
+								var _v8 = A3($author$project$Nats$toCmd, cfg, eff, st);
+								var newState = _v8.a;
+								var newCmd = _v8.b;
 								return _Utils_Tuple2(
 									newState,
 									A2($elm$core$List$cons, newCmd, cmd));

@@ -1,4 +1,7 @@
-module Nats.PortsAPI exposing (Message, Ack, Ports)
+module Nats.PortsAPI exposing
+    ( Message, Ack, Ports
+    , Open, Socket
+    )
 
 {-| Defines the API for the ports that are required to interface with JS.
 
@@ -22,10 +25,18 @@ type alias Ack =
     }
 
 
+type alias Socket =
+    { sid : String
+    , url : String
+    , mode : String
+    , debug : Bool
+    }
+
+
 {-| This is the API that the ports module must implement.
 -}
 type alias Ports msg =
-    { open : ( String, String, String ) -> Cmd msg
+    { open : Socket -> Cmd msg
     , close : String -> Cmd msg
     , send : Message -> Cmd msg
     , onAck : (Ack -> msg) -> Sub msg
@@ -34,3 +45,7 @@ type alias Ports msg =
     , onError : ({ sid : String, message : String } -> msg) -> Sub msg
     , onMessage : (Message -> msg) -> Sub msg
     }
+
+
+type alias Open msg =
+    Socket -> Cmd msg

@@ -1,5 +1,5 @@
 module Nats.Config exposing
-    ( Config, withDebug, withDebugLog
+    ( Config, withDebug
     , bytes, string
     )
 
@@ -23,7 +23,7 @@ type alias Config datatype msg =
     { parentMsg : Msg msg -> msg
     , ports : Ports (Msg msg)
     , debug : Bool
-    , debugLog : String -> String -> String
+    , onError : Maybe (String -> msg)
     , size : datatype -> Int
     , mode : String
     , parse : datatype -> Maybe (Protocol.PartialOperation datatype) -> Protocol.OperationResult datatype
@@ -51,7 +51,7 @@ string parentMsg ports =
     { parentMsg = parentMsg
     , ports = ports
     , debug = False
-    , debugLog = \_ s -> s
+    , onError = Nothing
     , mode = "text"
     , parse = Protocol.parseString
     , size = String.length
@@ -79,7 +79,7 @@ bytes parentMsg ports =
     { parentMsg = parentMsg
     , ports = ports
     , debug = False
-    , debugLog = \_ s -> s
+    , onError = Nothing
     , mode = "binary"
     , parse = Protocol.parseBytes
     , size = Bytes.width
@@ -104,10 +104,3 @@ bytes parentMsg ports =
 withDebug : Bool -> Config datatype msg -> Config datatype msg
 withDebug value cfg =
     { cfg | debug = value }
-
-
-{-| Provide a debug log function
--}
-withDebugLog : (String -> String -> String) -> Config datatype msg -> Config datatype msg
-withDebugLog debugLog cfg =
-    { cfg | debugLog = debugLog }

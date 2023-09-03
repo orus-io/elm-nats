@@ -16,6 +16,7 @@ type alias SocketProps =
     { id : String
     , default : Bool
     , url : String
+    , debug : Bool
     }
 
 

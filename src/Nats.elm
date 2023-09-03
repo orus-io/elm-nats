@@ -314,11 +314,9 @@ toCmd cfg effect ((State state) as oState) =
         Pub { sid, subject, replyTo, message } ->
             case sid |> Maybe.withDefault (state.defaultSocket |> Maybe.withDefault "") of
                 "" ->
-                    let
-                        _ =
-                            cfg.debugLog "cannot publish message" "Could not determine the sid"
-                    in
-                    ( oState, Cmd.none )
+                    ( oState
+                    , logError cfg "cannot publish message: Could not determine the sid"
+                    )
 
                 s ->
                     ( oState
@@ -341,18 +339,16 @@ toCmd cfg effect ((State state) as oState) =
         Request { sid, subject, message, onResponse, timeout } ->
             case sid |> Maybe.withDefault (state.defaultSocket |> Maybe.withDefault "") of
                 "" ->
-                    let
-                        _ =
-                            cfg.debugLog "cannot publish message" "Could not determine the sid"
-                    in
-                    ( oState, Cmd.none )
+                    ( oState
+                    , logError cfg "cannot publish request: Could not determine the sid"
+                    )
 
                 s ->
                     let
                         ( inbox, state1 ) =
                             nextInbox oState
 
-                        ( nextState, msg, cmd ) =
+                        ( nextState, _, cmd ) =
                             state1
                                 |> updateSocket cfg
                                     s
@@ -488,7 +484,12 @@ handleSubHelper cfg sub ((State state) as oState) =
                                         else
                                             Just id
                         }
-                    , cfg.ports.open ( props.id, props.url, cfg.mode )
+                    , cfg.ports.open
+                        { sid = props.id
+                        , url = props.url
+                        , mode = cfg.mode
+                        , debug = props.debug || cfg.debug
+                        }
                         |> Cmd.map cfg.parentMsg
                     )
 
@@ -501,11 +502,9 @@ handleSubHelper cfg sub ((State state) as oState) =
         Subscribe { sid, subject, group, onMessage } ->
             case sid |> Maybe.withDefault (state.defaultSocket |> Maybe.withDefault "") of
                 "" ->
-                    let
-                        _ =
-                            cfg.debugLog "cannot subscribe" "Could not determine the sid"
-                    in
-                    ( oState, Cmd.none )
+                    ( oState
+                    , logError cfg "cannot subscribe: Could not determine the sid"
+                    )
 
                 s ->
                     let
@@ -540,11 +539,19 @@ applyEffectAndSub cfg effect sub state =
 
 doSend : Config datatype msg -> PortsAPI.Message -> Cmd (Msg msg)
 doSend cfg message =
-    let
-        _ =
-            cfg.debugLog ("sending to " ++ message.sid) message.message
-    in
     cfg.ports.send message
+
+
+logError : Config datatype msg -> String -> Cmd msg
+logError cfg err =
+    cfg.onError
+        |> Maybe.map
+            (\onError ->
+                onError err
+                    |> Task.succeed
+                    |> Task.perform identity
+            )
+        |> Maybe.withDefault Cmd.none
 
 
 connect : Protocol.ConnectOptions -> Socket -> (SocketEvent -> msg) -> Sub datatype msg

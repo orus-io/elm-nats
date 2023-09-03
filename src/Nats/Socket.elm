@@ -54,6 +54,15 @@ new sid url =
         { id = sid
         , default = False
         , url = url
+        , debug = False
+        }
+
+
+withDebug : Bool -> Socket -> Socket
+withDebug value (Types.Socket props) =
+    Types.Socket
+        { props
+            | debug = value
         }
 
 

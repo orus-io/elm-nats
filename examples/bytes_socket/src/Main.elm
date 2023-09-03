@@ -25,7 +25,7 @@ import Bytes.Decode
 ---- PORTS ----
 
 
-port natsOpen : ( String, String, String ) -> Cmd msg
+port natsOpen : Nats.PortsAPI.Open msg
 
 
 port natsClose : String -> Cmd msg
@@ -62,7 +62,6 @@ natsConfig =
         , send = natsSend
         }
         |> Nats.Config.withDebug True
-        |> Nats.Config.withDebugLog Debug.log
 
 
 
