@@ -317,7 +317,7 @@ scaffolding boxes =
             [ div [ class "col-sm-12" ]
                 [ panel
                     [ h1 [] [ text "Elm NATS demonstration mini-app" ]
-                    , p [] [ text "This mini-app demonstration pub, sub and req/rep" ]
+                    , p [] [ text "This mini-app demonstration pub, sub and req/rep using Bytes messages" ]
                     ]
                 ]
             , div [ class "col-sm-6" ] <|

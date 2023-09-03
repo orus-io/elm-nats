@@ -8388,7 +8388,7 @@ var $author$project$Main$scaffolding = function (boxes) {
 											_List_Nil,
 											_List_fromArray(
 												[
-													$elm$html$Html$text('This mini-app demonstration pub, sub and req/rep')
+													$elm$html$Html$text('This mini-app demonstration pub, sub and req/rep using String messages')
 												]))
 										]))
 								])),
