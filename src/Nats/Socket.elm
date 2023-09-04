@@ -1,8 +1,8 @@
 module Nats.Socket exposing
     ( Status(..), Socket
     , new, setDefault
-    , withAuthToken, withUserPass
     , connectOptions
+    , withAuthToken, withUserPass
     )
 
 {-| A socket defines a connection to a nats server
@@ -14,6 +14,7 @@ module Nats.Socket exposing
 
 # Authentication
 
+@docs connectOptions
 @docs withAuthToken, withUserPass
 
 -}
@@ -66,6 +67,11 @@ withDebug value (Types.Socket props) =
         }
 
 
+{-| Build the smallest ConnectOptions possible
+
+You generally want to combine it with 'withUserPass' or 'withAuthToken'
+
+-}
 connectOptions : String -> String -> ConnectOptions
 connectOptions name version =
     { name = Just name

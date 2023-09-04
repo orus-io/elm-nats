@@ -26,13 +26,15 @@ Nats module. You need to wire it into your application.
     import Nats.Sub
     ```
 
-1. Add a state for each of the nats connection your application handles to your
-   top-level model, or at least one that contains all the components that uses
-   the Nats API.
+1. Add a global nats state, on your top-level application model, or Shared model.
+   At this point you need to choose between Bytes and String sockets. The String
+   socket will only be able to exchange String messages with the server.
+
+   Using protobuf requires a Bytes socket.
 
    ```elm
    type alias Model =
-       { nats: Nats.State Msg
+       { nats: Nats.State String Msg
        -- ...
        }
    ```
@@ -45,22 +47,26 @@ Nats module. You need to wire it into your application.
        | NatsMsg Nats.Msg
    ```
 
-1. Setup the ports and the configuration:
+1. Setup the ports and the configuration, with a message type consistent with
+   your nats state:
 
    ```elm
-   port natsOpen : ( String, String ) -> Cmd msg
-   port natsClose : String -> Cmd msg
-   port natsOnOpen : (String -> msg) -> Sub msg
-   port natsOnClose : (String -> msg) -> Sub msg
-   port natsOnError : ({ sid : String, message : String } -> msg) -> Sub msg
-   port natsOnMessage : (Nats.PortsAPI.Message -> msg) -> Sub msg
-   port natsSend : Nats.PortsAPI.Message -> Cmd msg
+   
+   port natsOpen : Nats.PortsAPI.Open msg
+   port natsClose : Nats.PortsAPI.Close msg
+   port natsOnAck : Nats.PortsAPI.OnAck msg
+   port natsOnOpen : Nats.PortsAPI.OnOpen msg
+   port natsOnClose : Nats.PortsAPI.OnClose msg
+   port natsOnError : Nats.PortsAPI.OnError msg
+   port natsOnMessage : Nats.PortsAPI.OnMessage msg
+   port natsSend : Nats.PortsAPI.Send msg
 
-   natsConfig : Nats.Config.Config Msg
+   natsConfig : Nats.Config.Config String Msg
    natsConfig =
-       Nats.Config.init NatsMsg
+       Nats.Config.string NatsMsg
            { open = natsOpen
            , close = natsClose
+           , onAck = natsOnAck
            , onOpen = natsOnOpen
            , onClose = natsOnClose
            , onError = natsOnError
@@ -77,24 +83,12 @@ Nats module. You need to wire it into your application.
        }
    ```
 
-   If you have credentials or a client name to send as CONNECT options,
-   use setAuthToken, setUserPass and/or setName:
-
-   ```elm
-   init =
-       { nats =
-           Nats.init
-               |> Nats.setAuthToken "A token"
-               |> Nats.setName "My client name"
-       }
-   ```
-
 1. Connect nats to the ports :
 
    ```elm
    subscriptions : Model -> Sub Msg
    subscriptions =
-       Nats.connect natsConfig model.nats
+       Nats.subscriptions natsConfig model.nats
    ```
 
 1. Define the top-level nats subscriptions:
@@ -105,7 +99,7 @@ Nats module. You need to wire it into your application.
        Nats.Sub.none
    ```
 
-1. Have your update function returns nats effect along with the regular Cmd, and
+1. Have your update function(s) return nats effect along with the regular Cmd, and
    wrap it to handle them:
 
    ```elm
@@ -149,16 +143,20 @@ Nats module. You need to wire it into your application.
 
 ### Open a connection
 
+Connect a socket is done with simple subscription:
+
 ```elm
-
-    ( model
-    , Nats.Socket.new "0" "ws://localhost:8087"
-        |> Nats.Socket.withUserPass "user" "password"
-        |> Nats.open
-    , Cmd.none
-    )
-
+   natsSubscriptions : Model -> Nats.Sub
+   natsSubscriptions model =
+       Nats.connect
+           ( Nats.Socket.connectOptions
+                 |> Nats.Socket.withUserPass "user" "password"
+           )
+           ( Nats.Socket.new "0" "ws://localhost:8087" )
 ```
+
+The socket definition and connection options will generally be saved on the model
+
 
 ### Publishing
 
@@ -180,7 +178,7 @@ In update, use publish to generate the right Effect:
    ```elm
 
    type Msg
-       = ReceiveSubject1 Nats.Protocol.Message
+       = ReceiveSubject1 (Nats.Protocol.Message String)
    ```
 
 1. Add the subscriptions to the "natsSubscriptions" function:
@@ -197,7 +195,7 @@ In update, use publish to generate the right Effect:
    ```elm
 
    type Msg
-       = ReceiveResponse (Result Nats.Errors.Timeout Nats.Protocol.Message)
+       = ReceiveResponse (Result Nats.Errors.Timeout (Nats.Protocol.Message String))
    ```
 
 1. Send a request from your update function

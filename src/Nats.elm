@@ -1,19 +1,22 @@
 module Nats exposing
-    ( publish
+    ( connect
+    , publish
     , subscribe, groupSubscribe
     , request, requestWithTimeout, groupRequest, groupRequestWithTimeout
     , State, Msg
     , Effect, Sub, applyEffectAndSub
-    , init, connect, update
-    , subscriptions
+    , init, update, subscriptions
     )
 
 {-| A nats.io client for Elm
 
 
-# pub/sub/requestack : data.ack
+# socket
 
-@docs open
+@docs connect
+
+
+# pub/sub/request
 
 @docs publish
 
@@ -34,7 +37,7 @@ module Nats exposing
 
 # ...
 
-@docs init, connect, update
+@docs init, update, subscriptions
 
 -}
 
@@ -554,6 +557,18 @@ logError cfg err =
         |> Maybe.withDefault Cmd.none
 
 
+{-| Open a socket
+
+The socket will be opened as soon as the subscription is active, and until
+the subscriptions is removed.
+
+The socket may get closed if a network error occurs, in which case a
+'SocketError' event will be sent
+
+After the subscription is removed, the handler will receive a SocketClosed
+event.
+
+-}
 connect : Protocol.ConnectOptions -> Socket -> (SocketEvent -> msg) -> Sub datatype msg
 connect =
     ISub.connect

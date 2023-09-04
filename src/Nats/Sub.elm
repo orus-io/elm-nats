@@ -9,7 +9,7 @@ This module mimics Platform.Sub, but for Nats subscriptions
 
 @docs map, batch, none
 
-@docs tag, socket
+@docs socket
 
 -}
 

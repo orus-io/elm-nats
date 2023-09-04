@@ -1,18 +1,18 @@
 module Nats.Protocol exposing
-    ( Operation(..), Message, ServerInfo, ConnectOptions, toString
+    ( Operation(..), Message, ServerInfo, ConnectOptions
+    , parseString, parseBytes, toBytes, toString
     , OperationResult(..), PartialOperation
-    , parseBytes, parseString, toBytes
     )
 
 {-| Provides types and utilities for the NATS protocol
 
-@docs Operation, Message, MessageData, ServerInfo, ConnectOptions, parseOperation, toString
+@docs Operation, Message, ServerInfo, ConnectOptions
+@docs parseString, parseBytes, toBytes, toString
 
 @docs OperationResult, PartialOperation
 
 -}
 
-import Base64.Encode
 import Bytes exposing (Bytes)
 import Bytes.Decode
 import Bytes.Encode
@@ -239,7 +239,10 @@ parseCommand empty c =
                 Err <| "Invalid command '" ++ c ++ "'"
 
 
-{-| Parse an operation (generally received from the server)
+{-| Parse an operation (generally received from the server) from a string
+
+Any message contained will be of type 'String'
+
 -}
 parseString : String -> Maybe (PartialOperation String) -> OperationResult String
 parseString str partialOp =
@@ -349,6 +352,11 @@ findStringInBytes s =
         >> Maybe.andThen identity
 
 
+{-| Parse an operation from binary data.
+
+Any message contained will be of type 'Bytes'
+
+-}
 parseBytes : Bytes -> Maybe (PartialOperation Bytes) -> OperationResult Bytes
 parseBytes data partial =
     case partial of

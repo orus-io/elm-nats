@@ -1,11 +1,8 @@
-module Nats.Config exposing
-    ( Config, withDebug
-    , bytes, string
-    )
+module Nats.Config exposing (Config, bytes, string, withDebug)
 
 {-| Define the configuration for NATS
 
-@docs Config, init, withDebug, withDebugLog
+@docs Config, bytes, string, withDebug
 
 -}
 
@@ -33,7 +30,7 @@ type alias Config datatype msg =
     }
 
 
-{-| Create a NATS configuration
+{-| Create a NATS configuration for string messages
 
 The parentMsg typically transform a Nats.Msg into the host application top-level
 message.
@@ -61,7 +58,7 @@ string parentMsg ports =
     }
 
 
-{-| Create a NATS configuration
+{-| Create a NATS configuration for bytes messages
 
 The parentMsg typically transform a Nats.Msg into the host application top-level
 message.
