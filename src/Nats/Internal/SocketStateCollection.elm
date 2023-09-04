@@ -6,7 +6,6 @@ module Nats.Internal.SocketStateCollection exposing
     , mapWithEffect
     , removeByID
     , update
-    , updateWithEffect
     )
 
 import Nats.Internal.SocketState exposing (SocketState)
@@ -58,29 +57,6 @@ update sid fn (SocketStateCollection list) =
                     socket
             )
         |> SocketStateCollection
-
-
-updateWithEffect :
-    String
-    -> (SocketState datatype msg -> ( SocketState datatype msg, effect ))
-    -> SocketStateCollection datatype msg
-    -> ( SocketStateCollection datatype msg, List effect )
-updateWithEffect sid fn (SocketStateCollection list) =
-    list
-        |> List.foldr
-            (\socket ( newList, effectList ) ->
-                if socket.socket.id == sid then
-                    let
-                        ( newSocket, effect ) =
-                            fn socket
-                    in
-                    ( newSocket :: newList, effect :: effectList )
-
-                else
-                    ( socket :: newList, effectList )
-            )
-            ( [], [] )
-        |> Tuple.mapFirst SocketStateCollection
 
 
 internalRemove : String -> List (SocketState datatype msg) -> List (SocketState datatype msg)

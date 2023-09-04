@@ -1,15 +1,30 @@
 module Nats.Internal.Types exposing
-    ( Effect(..)
+    ( Config(..)
+    , Effect(..)
     , Msg(..)
     , Socket(..)
     , SocketProps
     )
 
 import Nats.Errors exposing (Timeout)
-import Nats.Events exposing (SocketEvent)
 import Nats.PortsAPI as PortsAPI
-import Nats.Protocol as Protocol exposing (ConnectOptions, ServerInfo)
+import Nats.Protocol as Protocol
 import Time
+
+
+type Config datatype msg
+    = Config
+        { parentMsg : Msg msg -> msg
+        , ports : PortsAPI.Ports (Msg msg)
+        , debug : Bool
+        , onError : Maybe (String -> msg)
+        , size : datatype -> Int
+        , mode : String
+        , parse : datatype -> Maybe (Protocol.PartialOperation datatype) -> Protocol.OperationResult datatype
+        , write : Protocol.Operation datatype -> datatype
+        , fromPortMessage : String -> Result String datatype
+        , toPortMessage : datatype -> String
+        }
 
 
 type alias SocketProps =

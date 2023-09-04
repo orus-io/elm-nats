@@ -72,23 +72,20 @@ type alias ConnectOptions =
 
 
 {-| Typed operations of the NATS protocol
+
+Here is the protocol documentation:
+
+    CONNECT Client Sent to server to specify connection information
+    PUB Client Publish a message to a subject, with optional reply subject
+    SUB Client Subscribe to a subject (or subject wildcard)
+    UNSUB Client Unsubscribe (or auto-unsubscribe) from subject
+    MSG Server Delivers a message payload to a subscriber
+    PING Both PING keep-alive message
+    PONG Both PONG keep-alive response
+    +OK Server Acknowledges well-formed protocol message in verbose mode
+    -ERR Server Indicates a protocol error. Will cause client disconnect.
+
 -}
-
-
-
-{-
-   CONNECT Client  Sent to server to specify connection information
-   PUB     Client  Publish a message to a subject, with optional reply subject
-   SUB     Client  Subscribe to a subject (or subject wildcard)
-   UNSUB   Client  Unsubscribe (or auto-unsubscribe) from subject
-   MSG     Server  Delivers a message payload to a subscriber
-   PING    Both    PING keep-alive message
-   PONG    Both    PONG keep-alive response
-   +OK     Server  Acknowledges well-formed protocol message in verbose mode
-   -ERR    Server  Indicates a protocol error. Will cause client disconnect.
--}
-
-
 type
     Operation datatype
     --| INFO 	Server 	Sent to client after initial TCP/IP connection
@@ -124,6 +121,7 @@ parseCommandMessage :
             }
 parseCommandMessage str =
     let
+        matches : List Regex.Match
         matches =
             case messageRe of
                 Nothing ->
@@ -135,23 +133,11 @@ parseCommandMessage str =
     case List.head matches of
         Just match ->
             let
+                args : List String
                 args =
                     List.map (Maybe.withDefault "") match.submatches
 
-                subject =
-                    Maybe.withDefault "" (List.head args)
-
-                sid =
-                    Maybe.withDefault "" (List.drop 1 args |> List.head)
-
-                replyTo =
-                    case Maybe.withDefault "" (List.drop 2 args |> List.head) of
-                        " " ->
-                            ""
-
-                        v ->
-                            v
-
+                size : String
                 size =
                     List.drop 3 args
                         |> List.head
@@ -162,6 +148,24 @@ parseCommandMessage str =
                     Err <| "Invalid size: " ++ size
 
                 Just value ->
+                    let
+                        subject : String
+                        subject =
+                            Maybe.withDefault "" (List.head args)
+
+                        sid : String
+                        sid =
+                            Maybe.withDefault "" (List.drop 1 args |> List.head)
+
+                        replyTo : String
+                        replyTo =
+                            case Maybe.withDefault "" (List.drop 2 args |> List.head) of
+                                " " ->
+                                    ""
+
+                                v ->
+                                    v
+                    in
                     Result.Ok
                         { subject = subject
                         , sid = sid
@@ -249,9 +253,11 @@ parseString str partialOp =
     case partialOp of
         Just (PartialOperation partial) ->
             let
+                data : String
                 data =
                     String.append partial.data str
 
+                newDataSize : Int
                 newDataSize =
                     String.length data
             in
@@ -311,9 +317,11 @@ parseString str partialOp =
 findStringInBytes : String -> Bytes -> Maybe Int
 findStringInBytes s =
     let
+        charList : List Char
         charList =
             String.toList s
 
+        stringLen : Int
         stringLen =
             String.length s
 
@@ -362,6 +370,7 @@ parseBytes data partial =
     case partial of
         Just (PartialOperation msg) ->
             let
+                body : Bytes
                 body =
                     Bytes.Encode.sequence
                         [ Bytes.Encode.bytes msg.data
@@ -369,6 +378,7 @@ parseBytes data partial =
                         ]
                         |> Bytes.Encode.encode
 
+                bodyWidth : Int
                 bodyWidth =
                     Bytes.width body
             in
@@ -400,6 +410,7 @@ parseBytes data partial =
                                     case parseCommand emptyBytes s of
                                         Ok (MSG sid msg) ->
                                             let
+                                                payloadWidth : Int
                                                 payloadWidth =
                                                     Bytes.width data - (index + 2)
                                             in
@@ -493,7 +504,7 @@ opHeader op =
                 JsonE.encode 0 <|
                     encodeConnect options
 
-        MSG sid message ->
+        MSG _ _ ->
             ""
 
         PING ->

@@ -15,7 +15,6 @@ import Nats.Config exposing (Config)
 import Nats.Errors exposing (Timeout)
 import Nats.Events as Events exposing (SocketEvent)
 import Nats.Internal.Types as Types
-import Nats.Nuid as Nuid exposing (Nuid)
 import Nats.Protocol as Protocol exposing (ConnectOptions)
 import Nats.Socket as Socket
 import Time
@@ -152,6 +151,7 @@ finalizeSubscriptions state =
     case state.status of
         Socket.Connected ->
             let
+                nextSubscriptions : List (Subscription datatype msg)
                 nextSubscriptions =
                     state.nextSubscriptions
                         |> Dict.values
@@ -205,7 +205,7 @@ addRequest :
         }
     -> SocketState datatype msg
     -> ( SocketState datatype msg, List (Protocol.Operation datatype) )
-addRequest cfg req state =
+addRequest (Types.Config cfg) req state =
     ( addSubscriptionHelper
         (Req
             { deadline = req.deadline
@@ -228,7 +228,7 @@ addRequest cfg req state =
 
 
 parse : Config datatype msg -> datatype -> SocketState datatype msg -> ( SocketState datatype msg, Maybe (Protocol.Operation datatype) )
-parse cfg data state =
+parse (Types.Config cfg) data state =
     case cfg.parse data state.partialOperation of
         Protocol.Operation op ->
             ( { state | partialOperation = Nothing }, Just op )
@@ -328,6 +328,7 @@ receiveOperation operation state =
                                 Sub ->
                                     ( Just message, True )
 
+                        nextState : SocketState datatype msg
                         nextState =
                             if continue then
                                 state

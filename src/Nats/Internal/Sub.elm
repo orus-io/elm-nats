@@ -7,7 +7,6 @@ module Nats.Internal.Sub exposing
     , none
     , socket
     , subscribe
-    , tag
     )
 
 {-| A way of telling Nats : "Please subscribe to this subject and send
@@ -94,30 +93,6 @@ map aToMsg (Sub sub) =
                             }
             )
         |> Sub
-
-
-tagSubject : String -> String -> String
-tagSubject atag subject =
-    case String.split "#" subject |> List.reverse of
-        [] ->
-            "#" ++ atag
-
-        [ s ] ->
-            s ++ "#" ++ atag
-
-        t :: s ->
-            (t ++ "_" ++ atag)
-                :: s
-                |> List.reverse
-                |> String.join "#"
-
-
-{-| Add a #tag to the subscription(s) subject
-Id the subject already has a tag, the two are combined with a '\_' separator
--}
-tag : String -> Sub datatype msg -> Sub datatype msg
-tag atag sub =
-    sub
 
 
 {-| Set a different socket id on the subscription

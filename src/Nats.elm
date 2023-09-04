@@ -3,7 +3,7 @@ module Nats exposing
     , publish
     , subscribe, groupSubscribe
     , request, requestWithTimeout, groupRequest, groupRequestWithTimeout
-    , State, Msg
+    , State
     , Effect, Sub, applyEffectAndSub
     , init, update, subscriptions
     )
@@ -27,7 +27,7 @@ module Nats exposing
 
 # Types
 
-@docs State, Msg
+@docs State
 
 
 # Effects
@@ -43,11 +43,12 @@ module Nats exposing
 
 import Nats.Config exposing (Config)
 import Nats.Errors exposing (Timeout)
-import Nats.Events as Events exposing (SocketEvent(..))
+import Nats.Events as Events exposing (SocketEvent)
 import Nats.Internal.SocketState as SocketState exposing (SocketState)
 import Nats.Internal.SocketStateCollection as SocketStateCollection exposing (SocketStateCollection)
 import Nats.Internal.Sub as ISub exposing (RealSub(..), Sub(..))
 import Nats.Internal.Types as Types exposing (Effect(..))
+import Nats.Msg exposing (Msg)
 import Nats.Nuid as Nuid exposing (Nuid)
 import Nats.PortsAPI as PortsAPI
 import Nats.Protocol as Protocol
@@ -76,12 +77,6 @@ type alias Sub datatype msg =
     ISub.Sub datatype msg
 
 
-{-| A nats internal Msg
--}
-type alias Msg msg =
-    Types.Msg msg
-
-
 {-| The nats internal state
 -}
 type State datatype msg
@@ -97,7 +92,7 @@ type State datatype msg
 {-| Connect the nats internal state to the ports
 -}
 subscriptions : Config datatype msg -> State datatype msg -> Platform.Sub.Sub msg
-subscriptions cfg _ =
+subscriptions (Types.Config cfg) _ =
     Sub.batch
         [ cfg.ports.onOpen Types.OnOpen
         , cfg.ports.onClose Types.OnClose
@@ -127,12 +122,13 @@ init seed now =
         }
 
 
-{-| -}
+{-| Handle Nats Msg
+-}
 update : Config datatype msg -> Msg msg -> State datatype msg -> ( State datatype msg, Cmd msg )
-update cfg msg state =
+update (Types.Config cfg) msg state =
     let
         ( newState, msgs, cmds ) =
-            updateWithEffects cfg msg state
+            updateWithEffects (Types.Config cfg) msg state
     in
     ( newState
     , Cmd.batch <|
@@ -176,7 +172,7 @@ updateSocket _ sid fn ((State state) as oState) =
 
 
 updateWithEffects : Config datatype msg -> Msg msg -> State datatype msg -> ( State datatype msg, List msg, Cmd (Msg msg) )
-updateWithEffects cfg msg ((State state) as oState) =
+updateWithEffects (Types.Config cfg) msg ((State state) as oState) =
     case msg of
         Types.OnOpen sid ->
             ( State
@@ -192,7 +188,7 @@ updateWithEffects cfg msg ((State state) as oState) =
 
         Types.OnClose sid ->
             oState
-                |> updateSocket cfg
+                |> updateSocket (Types.Config cfg)
                     sid
                     (\socket ->
                         case socket.status of
@@ -211,7 +207,7 @@ updateWithEffects cfg msg ((State state) as oState) =
 
         Types.OnError { sid, message } ->
             oState
-                |> updateSocket cfg
+                |> updateSocket (Types.Config cfg)
                     sid
                     (\socket ->
                         ( Just <|
@@ -233,7 +229,7 @@ updateWithEffects cfg msg ((State state) as oState) =
                         Ok data ->
                             let
                                 ( socketN, msgs, operations ) =
-                                    SocketState.receive cfg
+                                    SocketState.receive (Types.Config cfg)
                                         data
                                         socket
                             in
@@ -259,7 +255,7 @@ updateWithEffects cfg msg ((State state) as oState) =
                                             cfg.write op
                                                 |> cfg.toPortMessage
                                         }
-                                            |> doSend cfg
+                                            |> doSend (Types.Config cfg)
                                     )
                                 |> Cmd.batch
                             )
@@ -272,18 +268,27 @@ updateWithEffects cfg msg ((State state) as oState) =
                             )
 
         Types.OnAck { sid, ack } ->
-            updateSocket cfg
+            updateSocket (Types.Config cfg)
                 sid
                 (\socket ->
-                    ( Just <| SocketState.ackCONNECT socket
-                    , []
-                    , Cmd.none
-                    )
+                    case ack of
+                        "CONNECT" ->
+                            ( Just <| SocketState.ackCONNECT socket
+                            , []
+                            , Cmd.none
+                            )
+
+                        _ ->
+                            ( Just socket
+                            , []
+                            , Cmd.none
+                            )
                 )
                 oState
 
         Types.OnTime time ->
             let
+                msTime : Int
                 msTime =
                     Time.posixToMillis time
 
@@ -312,18 +317,18 @@ nextInbox (State state) =
 
 
 toCmd : Config datatype msg -> Effect datatype msg -> State datatype msg -> ( State datatype msg, Cmd msg )
-toCmd cfg effect ((State state) as oState) =
+toCmd (Types.Config cfg) effect ((State state) as oState) =
     case effect of
         Pub { sid, subject, replyTo, message } ->
             case sid |> Maybe.withDefault (state.defaultSocket |> Maybe.withDefault "") of
                 "" ->
                     ( oState
-                    , logError cfg "cannot publish message: Could not determine the sid"
+                    , logError (Types.Config cfg) "cannot publish message: Could not determine the sid"
                     )
 
                 s ->
                     ( oState
-                    , doSend cfg
+                    , doSend (Types.Config cfg)
                         { sid = s
                         , ack = Nothing
                         , message =
@@ -343,7 +348,7 @@ toCmd cfg effect ((State state) as oState) =
             case sid |> Maybe.withDefault (state.defaultSocket |> Maybe.withDefault "") of
                 "" ->
                     ( oState
-                    , logError cfg "cannot publish request: Could not determine the sid"
+                    , logError (Types.Config cfg) "cannot publish request: Could not determine the sid"
                     )
 
                 s ->
@@ -353,12 +358,12 @@ toCmd cfg effect ((State state) as oState) =
 
                         ( nextState, _, cmd ) =
                             state1
-                                |> updateSocket cfg
+                                |> updateSocket (Types.Config cfg)
                                     s
                                     (\socket ->
                                         let
                                             ( newSocket, ops ) =
-                                                SocketState.addRequest cfg
+                                                SocketState.addRequest (Types.Config cfg)
                                                     { subject = subject
                                                     , inbox = inbox
                                                     , message = message
@@ -372,7 +377,7 @@ toCmd cfg effect ((State state) as oState) =
                                         , ops
                                             |> List.map
                                                 (\op ->
-                                                    doSend cfg
+                                                    doSend (Types.Config cfg)
                                                         { sid = s
                                                         , ack =
                                                             case op of
@@ -398,7 +403,7 @@ toCmd cfg effect ((State state) as oState) =
                     (\eff ( st, cmd ) ->
                         let
                             ( newState, newCmd ) =
-                                toCmd cfg eff st
+                                toCmd (Types.Config cfg) eff st
                         in
                         ( newState, newCmd :: cmd )
                     )
@@ -410,7 +415,7 @@ toCmd cfg effect ((State state) as oState) =
 
 
 handleSub : Config datatype msg -> Sub datatype msg -> State datatype msg -> ( State datatype msg, Cmd msg )
-handleSub cfg (Sub subList) state =
+handleSub (Types.Config cfg) (Sub subList) state =
     let
         ( State nState, cmd ) =
             subList
@@ -418,7 +423,7 @@ handleSub cfg (Sub subList) state =
                     (\innerSub ( st, cmdList ) ->
                         let
                             ( newState, newCmd ) =
-                                handleSubHelper cfg innerSub st
+                                handleSubHelper (Types.Config cfg) innerSub st
                         in
                         ( newState, newCmd :: cmdList )
                     )
@@ -433,7 +438,7 @@ handleSub cfg (Sub subList) state =
                             |> Tuple.mapSecond
                                 (List.map
                                     (\op ->
-                                        doSend cfg
+                                        doSend (Types.Config cfg)
                                             { sid = socket.socket.id
                                             , ack =
                                                 case op of
@@ -463,7 +468,7 @@ handleSub cfg (Sub subList) state =
 
 
 handleSubHelper : Config datatype msg -> RealSub datatype msg -> State datatype msg -> ( State datatype msg, Cmd msg )
-handleSubHelper cfg sub ((State state) as oState) =
+handleSubHelper (Types.Config cfg) sub ((State state) as oState) =
     case sub of
         Connect options ((Types.Socket props) as socket) onEvent ->
             case SocketStateCollection.findByID props.id state.sockets of
@@ -506,14 +511,14 @@ handleSubHelper cfg sub ((State state) as oState) =
             case sid |> Maybe.withDefault (state.defaultSocket |> Maybe.withDefault "") of
                 "" ->
                     ( oState
-                    , logError cfg "cannot subscribe: Could not determine the sid"
+                    , logError (Types.Config cfg) "cannot subscribe: Could not determine the sid"
                     )
 
                 s ->
                     let
                         ( newState, _, _ ) =
                             oState
-                                |> updateSocket cfg
+                                |> updateSocket (Types.Config cfg)
                                     s
                                     (\socket ->
                                         ( Just <| SocketState.addSubscription subject group onMessage socket
@@ -529,24 +534,24 @@ handleSubHelper cfg sub ((State state) as oState) =
 by the app root component, and emit all the necessary Cmd
 -}
 applyEffectAndSub : Config datatype msg -> Effect datatype msg -> Sub datatype msg -> State datatype msg -> ( State datatype msg, Cmd msg )
-applyEffectAndSub cfg effect sub state =
+applyEffectAndSub (Types.Config cfg) effect sub state =
     let
         ( s1, cmd1 ) =
-            toCmd cfg effect state
+            toCmd (Types.Config cfg) effect state
 
         ( s2, cmd2 ) =
-            handleSub cfg sub s1
+            handleSub (Types.Config cfg) sub s1
     in
     ( s2, Cmd.batch [ cmd1, cmd2 ] )
 
 
 doSend : Config datatype msg -> PortsAPI.Message -> Cmd (Msg msg)
-doSend cfg message =
+doSend (Types.Config cfg) message =
     cfg.ports.send message
 
 
-logError : Config datatype msg -> String -> Cmd msg
-logError cfg err =
+logError : Types.Config datatype msg -> String -> Cmd msg
+logError (Types.Config cfg) err =
     cfg.onError
         |> Maybe.map
             (\onError ->
@@ -646,4 +651,4 @@ If you wish to subscribe on a non-default socket, use Nats.Sub.onSocket
 -}
 groupSubscribe : String -> String -> (Protocol.Message datatype -> msg) -> Sub datatype msg
 groupSubscribe subject group onMessage =
-    Sub [ Subscribe { sid = Nothing, subject = subject, group = group, onMessage = onMessage } ]
+    ISub.subscribe { sid = Nothing, subject = subject, group = group, onMessage = onMessage }

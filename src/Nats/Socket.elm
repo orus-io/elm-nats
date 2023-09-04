@@ -1,6 +1,6 @@
 module Nats.Socket exposing
     ( Status(..), Socket
-    , new, setDefault
+    , new, setDefault, withDebug
     , connectOptions
     , withAuthToken, withUserPass
     )
@@ -9,7 +9,7 @@ module Nats.Socket exposing
 
 @docs Status, Socket
 
-@docs new, setDefault
+@docs new, setDefault, withDebug
 
 
 # Authentication
@@ -19,9 +19,8 @@ module Nats.Socket exposing
 
 -}
 
-import Bytes exposing (Bytes)
 import Nats.Internal.Types as Types
-import Nats.Protocol exposing (ConnectOptions, ServerInfo)
+import Nats.Protocol exposing (ConnectOptions)
 
 
 {-| Representation of a Nats connection properties
@@ -59,6 +58,12 @@ new sid url =
         }
 
 
+{-| Enable/disable debug mode on the socket
+
+If the Config debug is on, all sockets will have debug enabled no matter what
+value is given to this function.
+
+-}
 withDebug : Bool -> Socket -> Socket
 withDebug value (Types.Socket props) =
     Types.Socket
