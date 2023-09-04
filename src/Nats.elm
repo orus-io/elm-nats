@@ -2,7 +2,7 @@ module Nats exposing
     ( connect
     , publish
     , subscribe, groupSubscribe
-    , request, requestWithTimeout, groupRequest, groupRequestWithTimeout
+    , request, requestWithTimeout
     , Config, State, Msg
     , Effect, Sub, applyEffectAndSub
     , init, update, subscriptions
@@ -22,7 +22,7 @@ module Nats exposing
 
 @docs subscribe, groupSubscribe
 
-@docs request, requestWithTimeout, groupRequest, groupRequestWithTimeout
+@docs request, requestWithTimeout
 
 
 # Types
@@ -595,39 +595,23 @@ The timeout is 5s by default
 
 -}
 request : String -> datatype -> (Result Timeout datatype -> msg) -> Effect datatype msg
-request =
-    groupRequest ""
-
-
-{-| Create a request with a custom timeout
--}
-requestWithTimeout : Int -> String -> datatype -> (Result Timeout datatype -> msg) -> Effect datatype msg
-requestWithTimeout =
-    groupRequestWithTimeout ""
-
-
-{-| Create a group request
--}
-groupRequest : String -> String -> datatype -> (Result Timeout datatype -> msg) -> Effect datatype msg
-groupRequest group subject message onResponse =
+request subject message onResponse =
     Request
         { sid = Nothing
         , subject = subject
-        , group = group
         , message = message
         , onResponse = onResponse
         , timeout = Nothing
         }
 
 
-{-| Create a group request with a custom timeout
+{-| Create a request with a custom timeout
 -}
-groupRequestWithTimeout : String -> Int -> String -> datatype -> (Result Timeout datatype -> msg) -> Effect datatype msg
-groupRequestWithTimeout group timeout subject message onResponse =
+requestWithTimeout : Int -> String -> datatype -> (Result Timeout datatype -> msg) -> Effect datatype msg
+requestWithTimeout timeout subject message onResponse =
     Request
         { sid = Nothing
         , subject = subject
-        , group = group
         , message = message
         , onResponse = onResponse
         , timeout = Just timeout

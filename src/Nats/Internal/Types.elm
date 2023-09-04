@@ -50,6 +50,6 @@ type Msg msg
 
 type Effect datatype msg
     = Pub { sid : Maybe String, subject : String, replyTo : Maybe String, message : datatype }
-    | Request { sid : Maybe String, subject : String, group : String, message : datatype, timeout : Maybe Int, onResponse : Result Timeout datatype -> msg }
+    | Request { sid : Maybe String, subject : String, message : datatype, timeout : Maybe Int, onResponse : Result Timeout datatype -> msg }
     | NoEffect
     | BatchEffect (List (Effect datatype msg))

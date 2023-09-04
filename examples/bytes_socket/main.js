@@ -8737,13 +8737,11 @@ var $author$project$Nats$Effect$map = F2(
 			case 'Request':
 				var sid = effect.a.sid;
 				var subject = effect.a.subject;
-				var group = effect.a.group;
 				var message = effect.a.message;
 				var onResponse = effect.a.onResponse;
 				var timeout = effect.a.timeout;
 				return $author$project$Nats$Internal$Types$Request(
 					{
-						group: group,
 						message: message,
 						onResponse: A2($elm$core$Basics$composeR, onResponse, fn),
 						sid: sid,
@@ -8779,12 +8777,11 @@ var $author$project$Main$receiveResponse = function (result) {
 		return $author$project$Main$RequestError;
 	}
 };
-var $author$project$Nats$groupRequest = F4(
-	function (group, subject, message, onResponse) {
+var $author$project$Nats$request = F3(
+	function (subject, message, onResponse) {
 		return $author$project$Nats$Internal$Types$Request(
-			{group: group, message: message, onResponse: onResponse, sid: $elm$core$Maybe$Nothing, subject: subject, timeout: $elm$core$Maybe$Nothing});
+			{message: message, onResponse: onResponse, sid: $elm$core$Maybe$Nothing, subject: subject, timeout: $elm$core$Maybe$Nothing});
 	});
-var $author$project$Nats$request = $author$project$Nats$groupRequest('');
 var $author$project$Nats$Socket$Error = function (a) {
 	return {$: 'Error', a: a};
 };

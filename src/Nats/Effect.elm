@@ -34,11 +34,10 @@ map fn effect =
         Types.Pub pub ->
             Types.Pub pub
 
-        Types.Request { sid, subject, group, message, onResponse, timeout } ->
+        Types.Request { sid, subject, message, onResponse, timeout } ->
             Types.Request
                 { sid = sid
                 , subject = subject
-                , group = group
                 , message = message
                 , onResponse = onResponse >> fn
                 , timeout = timeout
