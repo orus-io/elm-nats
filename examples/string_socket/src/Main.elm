@@ -5,7 +5,6 @@ import Html exposing (Html, a, button, div, h1, h3, h4, img, input, label, li, p
 import Html.Attributes exposing (class, href, placeholder, src, style, type_, width)
 import Html.Events exposing (onClick, onInput)
 import Nats
-import Nats.Msg
 import Nats.Events
 import Nats.Effect
 import Nats.Config
@@ -47,7 +46,7 @@ port natsOnMessage : (Nats.PortsAPI.Message -> msg) -> Sub msg
 port natsSend : Nats.PortsAPI.Message -> Cmd msg
 
 
-natsConfig : Nats.Config.Config String Msg
+natsConfig : Nats.Config String Msg
 natsConfig =
     Nats.Config.string NatsMsg
         { open = natsOpen
@@ -112,7 +111,7 @@ applyNatsEffect effect model =
 
 type Msg
     = NoOp
-    | NatsMsg (Nats.Msg.Msg Msg)
+    | NatsMsg (Nats.Msg Msg)
     | SubCompMsg SubComp.Msg
     | NatsConnect Nats.Protocol.ServerInfo
     | OnSocketEvent Nats.Events.SocketEvent

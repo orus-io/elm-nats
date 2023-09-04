@@ -3,7 +3,7 @@ module Nats exposing
     , publish
     , subscribe, groupSubscribe
     , request, requestWithTimeout, groupRequest, groupRequestWithTimeout
-    , State
+    , Config, State, Msg
     , Effect, Sub, applyEffectAndSub
     , init, update, subscriptions
     )
@@ -27,7 +27,7 @@ module Nats exposing
 
 # Types
 
-@docs State
+@docs Config, State, Msg
 
 
 # Effects
@@ -41,14 +41,12 @@ module Nats exposing
 
 -}
 
-import Nats.Config exposing (Config)
 import Nats.Errors exposing (Timeout)
 import Nats.Events as Events exposing (SocketEvent)
 import Nats.Internal.SocketState as SocketState exposing (SocketState)
 import Nats.Internal.SocketStateCollection as SocketStateCollection exposing (SocketStateCollection)
 import Nats.Internal.Sub as ISub exposing (RealSub(..), Sub(..))
 import Nats.Internal.Types as Types exposing (Effect(..))
-import Nats.Msg exposing (Msg)
 import Nats.Nuid as Nuid exposing (Nuid)
 import Nats.PortsAPI as PortsAPI
 import Nats.Protocol as Protocol
@@ -75,6 +73,18 @@ Will be converted at the last moment to regular Sub.
 -}
 type alias Sub datatype msg =
     ISub.Sub datatype msg
+
+
+{-| A nats internal Msg
+-}
+type alias Msg msg =
+    Types.Msg msg
+
+
+{-| The NATS configuration
+-}
+type alias Config datatype msg =
+    Types.Config datatype msg
 
 
 {-| The nats internal state

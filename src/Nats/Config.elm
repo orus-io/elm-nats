@@ -1,24 +1,18 @@
-module Nats.Config exposing (Config, bytes, string, withDebug)
+module Nats.Config exposing (bytes, string, withDebug)
 
 {-| Define the configuration for NATS
 
-@docs Config, bytes, string, withDebug
+@docs bytes, string, withDebug
 
 -}
 
 import Base64.Decode
 import Base64.Encode
 import Bytes exposing (Bytes)
+import Nats exposing (Config, Msg)
 import Nats.Internal.Types as Types
-import Nats.Msg exposing (Msg)
 import Nats.PortsAPI exposing (Ports)
 import Nats.Protocol as Protocol
-
-
-{-| The NATS configuration
--}
-type alias Config datatype msg =
-    Types.Config datatype msg
 
 
 {-| Create a NATS configuration for string messages

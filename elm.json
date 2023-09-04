@@ -6,7 +6,6 @@
     "version": "1.0.0",
     "exposed-modules": [
         "Nats",
-        "Nats.Msg",
         "Nats.Effect",
         "Nats.Sub",
         "Nats.Events",
