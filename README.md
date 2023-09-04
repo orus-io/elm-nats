@@ -1,5 +1,8 @@
 # elm-nats
 
+[NATS](https://nats.io) is a simple, secure and performant communications
+system for digital systems, services and devices.
+
 This library is a pure Elm implementation of the NATS client protocol on top
 a websocket.
 
@@ -7,6 +10,23 @@ a websocket.
 
 A running nats-server, with websockets enabled (see
 [WebSocket Configuration Example](https://docs.nats.io/running-a-nats-service/configuration/websocket/websocket_conf))
+
+## Demonstration apps
+
+### Get a nats-server up
+
+```
+go install github.com/nats-io/nats-server/v2@latest 
+cd examples/string_socket
+nats-server -c server.conf
+```
+
+### Start the example app
+
+```
+cd examples/string_socket
+elm-go -- src/Main.elm -o main.js
+```
 
 ## Setup
 
@@ -52,33 +72,21 @@ Nats module. You need to wire it into your application.
 
    ```elm
    
-   port natsOpen : Nats.PortsAPI.Open msg
-   port natsClose : Nats.PortsAPI.Close msg
-   port natsOnAck : Nats.PortsAPI.OnAck msg
-   port natsOnOpen : Nats.PortsAPI.OnOpen msg
-   port natsOnClose : Nats.PortsAPI.OnClose msg
-   port natsOnError : Nats.PortsAPI.OnError msg
-   port natsOnMessage : Nats.PortsAPI.OnMessage msg
-   port natsSend : Nats.PortsAPI.Send msg
+   port natsSend : Nats.PortsAPI.Send String msg
+   port natsReceive : Nats.PortsAPI.Receive String msg
 
-   natsConfig : Nats.Config.Config String Msg
+   natsConfig : Nats.Config String String Msg
    natsConfig =
        Nats.Config.string NatsMsg
-           { open = natsOpen
-           , close = natsClose
-           , onAck = natsOnAck
-           , onOpen = natsOnOpen
-           , onClose = natsOnClose
-           , onError = natsOnError
-           , onMessage = natsOnMessage
-           , send = natsSend
+           { send = natsSend
+           , receive = natsReceive
            }
    ```
 
 1. Initialize the State.
 
    ```elm
-   init { flags | now : Int }=
+   init { flags | now : Int } =
        { nats = Nats.init now (Time.millisToPosix now)
        }
    ```
