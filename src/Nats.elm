@@ -42,7 +42,7 @@ module Nats exposing
 -}
 
 import Nats.Errors exposing (Timeout)
-import Nats.Events as Events exposing (SocketEvent)
+import Nats.Events exposing (SocketEvent)
 import Nats.Internal.Ports as Ports
 import Nats.Internal.SocketState as SocketState exposing (SocketState)
 import Nats.Internal.SocketStateCollection as SocketStateCollection exposing (SocketStateCollection)
@@ -77,14 +77,14 @@ type alias Sub datatype msg =
 
 {-| A nats internal Msg
 -}
-type alias Msg msg =
-    Types.Msg msg
+type alias Msg datatype msg =
+    Types.Msg datatype msg
 
 
 {-| The NATS configuration
 -}
-type alias Config datatype msg =
-    Types.Config datatype msg
+type alias Config datatype portdatatype msg =
+    Types.Config datatype portdatatype msg
 
 
 {-| The nats internal state
@@ -99,8 +99,11 @@ type State datatype msg
         }
 
 
-onReceive : Ports.Event -> Msg msg
-onReceive event =
+onReceive :
+    Config datatype portdatatype msg
+    -> Ports.Event portdatatype
+    -> Msg datatype msg
+onReceive (Types.Config cfg) event =
     case ( event.ack, event.open, event.close ) of
         ( Just ack, _, _ ) ->
             Types.OnAck ack
@@ -117,7 +120,19 @@ onReceive event =
                     Types.OnError err
 
                 ( _, Just msg ) ->
-                    Types.OnMessage msg
+                    case cfg.fromPortMessage msg.message of
+                        Ok message ->
+                            Types.OnMessage
+                                { sid = msg.sid
+                                , ack = msg.ack
+                                , message = message
+                                }
+
+                        Err err ->
+                            Types.OnError
+                                { sid = msg.sid
+                                , message = "could not decode port message: " ++ err
+                                }
 
                 _ ->
                     Types.OnError { sid = "", message = "invalid event coming from the port" }
@@ -125,10 +140,10 @@ onReceive event =
 
 {-| Connect the nats internal state to the ports
 -}
-subscriptions : Config datatype msg -> State datatype msg -> Platform.Sub.Sub msg
-subscriptions (Types.Config cfg) _ =
+subscriptions : Config datatype portdatatype msg -> State datatype msg -> Platform.Sub.Sub msg
+subscriptions ((Types.Config cfg) as ocfg) _ =
     Sub.batch
-        [ cfg.ports.receive onReceive
+        [ cfg.ports.receive (onReceive ocfg)
         , Time.every 1000 Types.OnTime
         ]
         |> Sub.map cfg.parentMsg
@@ -154,7 +169,7 @@ init seed now =
 
 {-| Handle Nats Msg
 -}
-update : Config datatype msg -> Msg msg -> State datatype msg -> ( State datatype msg, Cmd msg )
+update : Config datatype portdatatype msg -> Msg datatype msg -> State datatype msg -> ( State datatype msg, Cmd msg )
 update (Types.Config cfg) msg state =
     let
         ( newState, msgs, cmds ) =
@@ -170,11 +185,11 @@ update (Types.Config cfg) msg state =
 
 
 updateSocket :
-    Config datatype msg
+    Config datatype portdatatype msg
     -> String
-    -> (SocketState datatype msg -> ( Maybe (SocketState datatype msg), List msg, Cmd (Msg msg) ))
+    -> (SocketState datatype msg -> ( Maybe (SocketState datatype msg), List msg, Cmd (Msg datatype msg) ))
     -> State datatype msg
-    -> ( State datatype msg, List msg, Cmd (Msg msg) )
+    -> ( State datatype msg, List msg, Cmd (Msg datatype msg) )
 updateSocket _ sid fn ((State state) as oState) =
     case SocketStateCollection.findByID sid state.sockets of
         Nothing ->
@@ -201,7 +216,11 @@ updateSocket _ sid fn ((State state) as oState) =
                     )
 
 
-updateWithEffects : Config datatype msg -> Msg msg -> State datatype msg -> ( State datatype msg, List msg, Cmd (Msg msg) )
+updateWithEffects :
+    Config datatype portdatatype msg
+    -> Msg datatype msg
+    -> State datatype msg
+    -> ( State datatype msg, List msg, Cmd (Msg datatype msg) )
 updateWithEffects (Types.Config cfg) msg ((State state) as oState) =
     case msg of
         Types.OnOpen sid ->
@@ -255,47 +274,37 @@ updateWithEffects (Types.Config cfg) msg ((State state) as oState) =
                     ( oState, [], Cmd.none )
 
                 Just socket ->
-                    case message |> cfg.fromPortMessage of
-                        Ok data ->
-                            let
-                                ( socketN, msgs, operations ) =
-                                    SocketState.receive (Types.Config cfg)
-                                        data
-                                        socket
-                            in
-                            ( State
-                                { state
-                                    | sockets =
-                                        state.sockets
-                                            |> SocketStateCollection.insert socketN
+                    let
+                        ( socketN, msgs, operations ) =
+                            SocketState.receive (Types.Config cfg)
+                                message
+                                socket
+                    in
+                    ( State
+                        { state
+                            | sockets =
+                                state.sockets
+                                    |> SocketStateCollection.insert socketN
+                        }
+                    , msgs
+                    , operations
+                        |> List.map
+                            (\op ->
+                                { sid = sid
+                                , ack =
+                                    case op of
+                                        Protocol.CONNECT _ ->
+                                            Just "CONNECT"
+
+                                        _ ->
+                                            Nothing
+                                , message =
+                                    cfg.write op
                                 }
-                            , msgs
-                            , operations
-                                |> List.map
-                                    (\op ->
-                                        { sid = sid
-                                        , ack =
-                                            case op of
-                                                Protocol.CONNECT _ ->
-                                                    Just "CONNECT"
-
-                                                _ ->
-                                                    Nothing
-                                        , message =
-                                            cfg.write op
-                                                |> cfg.toPortMessage
-                                        }
-                                            |> doSend (Types.Config cfg)
-                                    )
-                                |> Cmd.batch
+                                    |> doSend (Types.Config cfg)
                             )
-
-                        Err err ->
-                            ( oState
-                            , [ socket.onEvent (Events.SocketError err)
-                              ]
-                            , Cmd.none
-                            )
+                        |> Cmd.batch
+                    )
 
         Types.OnAck { sid, ack } ->
             updateSocket (Types.Config cfg)
@@ -346,7 +355,7 @@ nextInbox (State state) =
     ( state.inboxPrefix ++ postfix, State { state | nuid = nuid } )
 
 
-toCmd : Config datatype msg -> Effect datatype msg -> State datatype msg -> ( State datatype msg, Cmd msg )
+toCmd : Config datatype portdatatype msg -> Effect datatype msg -> State datatype msg -> ( State datatype msg, Cmd msg )
 toCmd (Types.Config cfg) effect ((State state) as oState) =
     case effect of
         Pub { sid, subject, replyTo, message } ->
@@ -369,7 +378,6 @@ toCmd (Types.Config cfg) effect ((State state) as oState) =
                                 , size = cfg.size message
                                 }
                                 |> cfg.write
-                                |> cfg.toPortMessage
                         }
                         |> Cmd.map cfg.parentMsg
                     )
@@ -418,7 +426,6 @@ toCmd (Types.Config cfg) effect ((State state) as oState) =
                                                                     Nothing
                                                         , message =
                                                             cfg.write op
-                                                                |> cfg.toPortMessage
                                                         }
                                                 )
                                             |> Cmd.batch
@@ -444,7 +451,7 @@ toCmd (Types.Config cfg) effect ((State state) as oState) =
             ( oState, Cmd.none )
 
 
-handleSub : Config datatype msg -> Sub datatype msg -> State datatype msg -> ( State datatype msg, Cmd msg )
+handleSub : Config datatype portdatatype msg -> Sub datatype msg -> State datatype msg -> ( State datatype msg, Cmd msg )
 handleSub (Types.Config cfg) (Sub subList) state =
     let
         ( State nState, cmd ) =
@@ -479,7 +486,6 @@ handleSub (Types.Config cfg) (Sub subList) state =
                                                         Nothing
                                             , message =
                                                 cfg.write op
-                                                    |> cfg.toPortMessage
                                             }
                                             |> Cmd.map cfg.parentMsg
                                     )
@@ -497,7 +503,7 @@ handleSub (Types.Config cfg) (Sub subList) state =
     )
 
 
-handleSubHelper : Config datatype msg -> RealSub datatype msg -> State datatype msg -> ( State datatype msg, Cmd msg )
+handleSubHelper : Config datatype portdatatype msg -> RealSub datatype msg -> State datatype msg -> ( State datatype msg, Cmd msg )
 handleSubHelper (Types.Config cfg) sub ((State state) as oState) =
     case sub of
         Connect options ((Types.Socket props) as socket) onEvent ->
@@ -565,7 +571,7 @@ handleSubHelper (Types.Config cfg) sub ((State state) as oState) =
 {-| Update the nats state according to all the Nats.Effect and Nats.Sub gathered
 by the app root component, and emit all the necessary Cmd
 -}
-applyEffectAndSub : Config datatype msg -> Effect datatype msg -> Sub datatype msg -> State datatype msg -> ( State datatype msg, Cmd msg )
+applyEffectAndSub : Config datatype portdatatype msg -> Effect datatype msg -> Sub datatype msg -> State datatype msg -> ( State datatype msg, Cmd msg )
 applyEffectAndSub (Types.Config cfg) effect sub state =
     let
         ( s1, cmd1 ) =
@@ -577,12 +583,17 @@ applyEffectAndSub (Types.Config cfg) effect sub state =
     ( s2, Cmd.batch [ cmd1, cmd2 ] )
 
 
-doSend : Config datatype msg -> Ports.Message -> Cmd (Msg msg)
+doSend : Config datatype portdatatype msg -> Ports.Message datatype -> Cmd (Msg datatype msg)
 doSend (Types.Config cfg) message =
-    cfg.ports.send (Ports.send message)
+    { sid = message.sid
+    , ack = message.ack
+    , message = cfg.toPortMessage message.message
+    }
+        |> Ports.send
+        |> cfg.ports.send
 
 
-logError : Types.Config datatype msg -> String -> Cmd msg
+logError : Types.Config datatype portdatatype msg -> String -> Cmd msg
 logError (Types.Config cfg) err =
     cfg.onError
         |> Maybe.map

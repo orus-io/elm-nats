@@ -1,43 +1,27 @@
-port module Main exposing (main)
+module Main exposing (main)
 
 import Browser
+import Bytes exposing (Bytes)
+import Bytes.Decode
+import Bytes.Encode
 import Html exposing (Html, a, button, div, h1, h3, h4, img, input, label, li, p, text, ul)
 import Html.Attributes exposing (class, href, placeholder, src, style, type_, width)
 import Html.Events exposing (onClick, onInput)
 import Nats
-import Nats.Events
 import Nats.Effect
-import Nats.Config
 import Nats.Errors exposing (Timeout)
-import Nats.PortsAPI
+import Nats.Events
 import Nats.Protocol
 import Nats.Socket
 import Nats.Sub
+import NatsPorts
 import Random
 import SubComp
 import Time
-import Bytes exposing (Bytes)
-import Bytes.Encode
-import Bytes.Decode
 
 
-
----- PORTS ----
-
-
-port natsSend : Nats.PortsAPI.Send msg
-
-
-port natsReceive : Nats.PortsAPI.Receive msg
-
-
-natsConfig : Nats.Config Bytes Msg
 natsConfig =
-    Nats.Config.bytes NatsMsg
-        { send = natsSend
-        , receive = natsReceive
-        }
-        |> Nats.Config.withDebug True
+    NatsPorts.natsConfig NatsMsg
 
 
 
@@ -58,16 +42,16 @@ init : { now : Int } -> ( Model, Cmd Msg )
 init flags =
     let
         nats =
-            Nats.init ( Random.initialSeed flags.now )
-            (Time.millisToPosix flags.now)
+            Nats.init (Random.initialSeed flags.now)
+                (Time.millisToPosix flags.now)
     in
-    ({ nats = nats
-    , socket = Nats.Socket.new "0" "ws://localhost:8087"
-    , serverInfo = Nothing
-    , subcomp = SubComp.init
-    , inputText = ""
-    , response = Nothing
-    }
+    ( { nats = nats
+      , socket = Nats.Socket.new "0" "ws://localhost:8087"
+      , serverInfo = Nothing
+      , subcomp = SubComp.init
+      , inputText = ""
+      , response = Nothing
+      }
     , Cmd.none
     )
 
@@ -90,7 +74,7 @@ applyNatsEffect effect model =
 
 type Msg
     = NoOp
-    | NatsMsg (Nats.Msg Msg)
+    | NatsMsg (Nats.Msg Bytes Msg)
     | SubCompMsg SubComp.Msg
     | NatsConnect Nats.Protocol.ServerInfo
     | OnSocketEvent Nats.Events.SocketEvent
@@ -115,17 +99,15 @@ receiveResponse result =
 natsSubscriptions : Model -> Nats.Sub Bytes Msg
 natsSubscriptions model =
     Nats.Sub.batch
-    [
-    SubComp.natsSubscriptions model.subcomp
-        |> Nats.Sub.map SubCompMsg
+        [ SubComp.natsSubscriptions model.subcomp
+            |> Nats.Sub.map SubCompMsg
         , Nats.groupSubscribe "say.hello.to.me" "server" HandleRequest
         , Nats.connect
-        (Nats.Socket.connectOptions "Demo" "0.1"
-                            |> Nats.Socket.withUserPass "test" "test"
+            (Nats.Socket.connectOptions "Demo" "0.1"
+                |> Nats.Socket.withUserPass "test" "test"
             )
-        model.socket
-        OnSocketEvent
-        
+            model.socket
+            OnSocketEvent
         ]
 
 
@@ -155,17 +137,15 @@ update msg model =
             )
 
         OnSocketEvent (Nats.Events.SocketOpen info) ->
-            (
-                { model
-              | serverInfo = Just info
+            ( { model
+                | serverInfo = Just info
               }
             , Nats.Effect.none
             , Cmd.none
             )
 
         OnSocketEvent _ ->
-            (
-              model
+            ( model
             , Nats.Effect.none
             , Cmd.none
             )
@@ -191,24 +171,24 @@ update msg model =
 
         -}
         HandleRequest message ->
-               ( model
-               , Nats.publish message.replyTo (
-                   [
-                   Bytes.Encode.string "Hello "
-                   , Bytes.Encode.bytes message.data
-                   , Bytes.Encode.string "!"
-                   ] |> Bytes.Encode.sequence
-                   |> Bytes.Encode.encode)
-               , Cmd.none
-               )
+            ( model
+            , Nats.publish message.replyTo
+                ([ Bytes.Encode.string "Hello "
+                 , Bytes.Encode.bytes message.data
+                 , Bytes.Encode.string "!"
+                 ]
+                    |> Bytes.Encode.sequence
+                    |> Bytes.Encode.encode
+                )
+            , Cmd.none
+            )
 
         Publish ->
             ( model
-            ,
-            "Hi"
-            |> Bytes.Encode.string
-            |> Bytes.Encode.encode
-            |> Nats.publish "test.subject" 
+            , "Hi"
+                |> Bytes.Encode.string
+                |> Bytes.Encode.encode
+                |> Nats.publish "test.subject"
             , Cmd.none
             )
 
@@ -221,32 +201,35 @@ update msg model =
             )
 
         SendRequest ->
-           ( model
-           , Nats.request "say.hello.to.me" (
-               model.inputText
-                   |> Bytes.Encode.string
-                   |> Bytes.Encode.encode
-               ) receiveResponse
-           , Cmd.none
-           )
+            ( model
+            , Nats.request "say.hello.to.me"
+                (model.inputText
+                    |> Bytes.Encode.string
+                    |> Bytes.Encode.encode
+                )
+                receiveResponse
+            , Cmd.none
+            )
 
         RequestError ->
-           ( { model | response = Just "Sorry, timeout error... Try again later?" }
-           , Nats.Effect.none
-           , Cmd.none
-           )
+            ( { model | response = Just "Sorry, timeout error... Try again later?" }
+            , Nats.Effect.none
+            , Cmd.none
+            )
 
         ReceiveResponse response ->
-           ( { model | response =
-               case Bytes.Decode.decode (Bytes.Decode.string (Bytes.width response)) response of
-                    Just s ->
-                       Just s
-                    Nothing ->
-                        Just "could not decode response"
-                }
-           , Nats.Effect.none
-           , Cmd.none
-           )
+            ( { model
+                | response =
+                    case Bytes.Decode.decode (Bytes.Decode.string (Bytes.width response)) response of
+                        Just s ->
+                            Just s
+
+                        Nothing ->
+                            Just "could not decode response"
+              }
+            , Nats.Effect.none
+            , Cmd.none
+            )
 
         NoOp ->
             ( model

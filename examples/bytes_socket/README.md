@@ -27,3 +27,8 @@ nats-server -c server.conf
 
 Open `example/index.html` in you favorite browser.
 
+## Bytes ports
+
+If you use the lamdera compiler, you can choose to enable bytes ports by
+replacing NatsPorts by NatsBinaryPorts in src/Main.elm.
+The bytes will then be passed through ports without base64 encoding/decoding.

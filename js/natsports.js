@@ -112,6 +112,8 @@ function setupNatsPorts(app) {
                         }
                         if (socket.mode == "binary") {
                             message = btoa(message)
+                        } else if (socket.mode == "binaryPort") {
+                            message = new DataView(message)
                         }
                         app.ports.natsReceive.send(
                             { ack : null
@@ -126,10 +128,12 @@ function setupNatsPorts(app) {
                             }
                         );
                     };
-                    if (socket.mode == "binary") {
-                        reader.readAsBinaryString(event.data)
-                    } else {
+                    if (socket.mode == "text") {
                         reader.readAsText(event.data);
+                    } else if (socket.mode == "binary") {
+                        reader.readAsBinaryString(event.data);
+                    } else {
+                        reader.readAsArrayBuffer(event.data)
                     }
                 };
             } catch (exception) {

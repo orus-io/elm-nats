@@ -11871,47 +11871,59 @@ var $author$project$Nats$Internal$Types$OnMessage = function (a) {
 var $author$project$Nats$Internal$Types$OnOpen = function (a) {
 	return {$: 'OnOpen', a: a};
 };
-var $author$project$Nats$onReceive = function (event) {
-	var _v0 = _Utils_Tuple3(event.ack, event.open, event.close);
-	if (_v0.a.$ === 'Just') {
-		var ack = _v0.a.a;
-		return $author$project$Nats$Internal$Types$OnAck(ack);
-	} else {
-		if (_v0.b.$ === 'Just') {
-			var sid = _v0.b.a;
-			return $author$project$Nats$Internal$Types$OnOpen(sid);
+var $author$project$Nats$onReceive = F2(
+	function (_v0, event) {
+		var cfg = _v0.a;
+		var _v1 = _Utils_Tuple3(event.ack, event.open, event.close);
+		if (_v1.a.$ === 'Just') {
+			var ack = _v1.a.a;
+			return $author$project$Nats$Internal$Types$OnAck(ack);
 		} else {
-			if (_v0.c.$ === 'Just') {
-				var sid = _v0.c.a;
-				return $author$project$Nats$Internal$Types$OnClose(sid);
+			if (_v1.b.$ === 'Just') {
+				var sid = _v1.b.a;
+				return $author$project$Nats$Internal$Types$OnOpen(sid);
 			} else {
-				var _v1 = _Utils_Tuple2(event.error, event.message);
-				if (_v1.a.$ === 'Just') {
-					var err = _v1.a.a;
-					return $author$project$Nats$Internal$Types$OnError(err);
+				if (_v1.c.$ === 'Just') {
+					var sid = _v1.c.a;
+					return $author$project$Nats$Internal$Types$OnClose(sid);
 				} else {
-					if (_v1.b.$ === 'Just') {
-						var msg = _v1.b.a;
-						return $author$project$Nats$Internal$Types$OnMessage(msg);
+					var _v2 = _Utils_Tuple2(event.error, event.message);
+					if (_v2.a.$ === 'Just') {
+						var err = _v2.a.a;
+						return $author$project$Nats$Internal$Types$OnError(err);
 					} else {
-						return $author$project$Nats$Internal$Types$OnError(
-							{message: 'invalid event coming from the port', sid: ''});
+						if (_v2.b.$ === 'Just') {
+							var msg = _v2.b.a;
+							var _v3 = cfg.fromPortMessage(msg.message);
+							if (_v3.$ === 'Ok') {
+								var message = _v3.a;
+								return $author$project$Nats$Internal$Types$OnMessage(
+									{ack: msg.ack, message: message, sid: msg.sid});
+							} else {
+								var err = _v3.a;
+								return $author$project$Nats$Internal$Types$OnError(
+									{message: 'could not decode port message: ' + err, sid: msg.sid});
+							}
+						} else {
+							return $author$project$Nats$Internal$Types$OnError(
+								{message: 'invalid event coming from the port', sid: ''});
+						}
 					}
 				}
 			}
 		}
-	}
-};
+	});
 var $author$project$Nats$subscriptions = F2(
-	function (_v0, _v1) {
-		var cfg = _v0.a;
+	function (ocfg, _v0) {
+		var cfg = ocfg.a;
 		return A2(
 			$elm$core$Platform$Sub$map,
 			cfg.parentMsg,
 			$elm$core$Platform$Sub$batch(
 				_List_fromArray(
 					[
-						cfg.ports.receive($author$project$Nats$onReceive),
+						cfg.ports.receive(
+						$author$project$Nats$onReceive(ocfg)),
 						A2($elm$time$Time$every, 1000, $author$project$Nats$Internal$Types$OnTime)
 					])));
 	});
@@ -11929,7 +11941,12 @@ var $author$project$Nats$doSend = F2(
 	function (_v0, message) {
 		var cfg = _v0.a;
 		return cfg.ports.send(
-			$author$project$Nats$Internal$Ports$send(message));
+			$author$project$Nats$Internal$Ports$send(
+				{
+					ack: message.ack,
+					message: cfg.toPortMessage(message.message),
+					sid: message.sid
+				}));
 	});
 var $author$project$Nats$Protocol$SUB = F3(
 	function (a, b, c) {
@@ -12386,8 +12403,7 @@ var $author$project$Nats$handleSub = F3(
 													return $elm$core$Maybe$Nothing;
 												}
 											}(),
-											message: cfg.toPortMessage(
-												cfg.write(op)),
+											message: cfg.write(op),
 											sid: socket.socket.id
 										}));
 							}),
@@ -12491,15 +12507,14 @@ var $author$project$Nats$toCmd = F3(
 								$author$project$Nats$Internal$Types$Config(cfg),
 								{
 									ack: $elm$core$Maybe$Nothing,
-									message: cfg.toPortMessage(
-										cfg.write(
-											$author$project$Nats$Protocol$PUB(
-												{
-													data: message,
-													replyTo: A2($elm$core$Maybe$withDefault, '', replyTo),
-													size: cfg.size(message),
-													subject: subject
-												}))),
+									message: cfg.write(
+										$author$project$Nats$Protocol$PUB(
+											{
+												data: message,
+												replyTo: A2($elm$core$Maybe$withDefault, '', replyTo),
+												size: cfg.size(message),
+												subject: subject
+											})),
 									sid: s
 								})));
 				}
@@ -12561,8 +12576,7 @@ var $author$project$Nats$toCmd = F3(
 															return $elm$core$Maybe$Nothing;
 														}
 													}(),
-													message: cfg.toPortMessage(
-														cfg.write(op)),
+													message: cfg.write(op),
 													sid: s
 												});
 										},
@@ -12869,9 +12883,6 @@ var $author$project$Nats$Socket$Error = function (a) {
 	return {$: 'Error', a: a};
 };
 var $author$project$Nats$Socket$Opened = {$: 'Opened'};
-var $author$project$Nats$Events$SocketError = function (a) {
-	return {$: 'SocketError', a: a};
-};
 var $author$project$Nats$Socket$Connected = {$: 'Connected'};
 var $author$project$Nats$Internal$SocketState$setStatus = F2(
 	function (status, state) {
@@ -13140,57 +13151,42 @@ var $author$project$Nats$updateWithEffects = F3(
 					return _Utils_Tuple3(oState, _List_Nil, $elm$core$Platform$Cmd$none);
 				} else {
 					var socket = _v3.a;
-					var _v4 = cfg.fromPortMessage(message);
-					if (_v4.$ === 'Ok') {
-						var data = _v4.a;
-						var _v5 = A3(
-							$author$project$Nats$Internal$SocketState$receive,
-							$author$project$Nats$Internal$Types$Config(cfg),
-							data,
-							socket);
-						var socketN = _v5.a;
-						var msgs = _v5.b;
-						var operations = _v5.c;
-						return _Utils_Tuple3(
-							$author$project$Nats$State(
-								_Utils_update(
-									state,
-									{
-										sockets: A2($author$project$Nats$Internal$SocketStateCollection$insert, socketN, state.sockets)
-									})),
-							msgs,
-							$elm$core$Platform$Cmd$batch(
-								A2(
-									$elm$core$List$map,
-									function (op) {
-										return A2(
-											$author$project$Nats$doSend,
-											$author$project$Nats$Internal$Types$Config(cfg),
-											{
-												ack: function () {
-													if (op.$ === 'CONNECT') {
-														return $elm$core$Maybe$Just('CONNECT');
-													} else {
-														return $elm$core$Maybe$Nothing;
-													}
-												}(),
-												message: cfg.toPortMessage(
-													cfg.write(op)),
-												sid: sid
-											});
-									},
-									operations)));
-					} else {
-						var err = _v4.a;
-						return _Utils_Tuple3(
-							oState,
-							_List_fromArray(
-								[
-									socket.onEvent(
-									$author$project$Nats$Events$SocketError(err))
-								]),
-							$elm$core$Platform$Cmd$none);
-					}
+					var _v4 = A3(
+						$author$project$Nats$Internal$SocketState$receive,
+						$author$project$Nats$Internal$Types$Config(cfg),
+						message,
+						socket);
+					var socketN = _v4.a;
+					var msgs = _v4.b;
+					var operations = _v4.c;
+					return _Utils_Tuple3(
+						$author$project$Nats$State(
+							_Utils_update(
+								state,
+								{
+									sockets: A2($author$project$Nats$Internal$SocketStateCollection$insert, socketN, state.sockets)
+								})),
+						msgs,
+						$elm$core$Platform$Cmd$batch(
+							A2(
+								$elm$core$List$map,
+								function (op) {
+									return A2(
+										$author$project$Nats$doSend,
+										$author$project$Nats$Internal$Types$Config(cfg),
+										{
+											ack: function () {
+												if (op.$ === 'CONNECT') {
+													return $elm$core$Maybe$Just('CONNECT');
+												} else {
+													return $elm$core$Maybe$Nothing;
+												}
+											}(),
+											message: cfg.write(op),
+											sid: sid
+										});
+								},
+								operations)));
 				}
 			case 'OnAck':
 				var sid = msg.a.sid;
@@ -13217,12 +13213,12 @@ var $author$project$Nats$updateWithEffects = F3(
 			default:
 				var time = msg.a;
 				var msTime = $elm$time$Time$posixToMillis(time);
-				var _v8 = A2(
+				var _v7 = A2(
 					$author$project$Nats$Internal$SocketStateCollection$mapWithEffect,
 					$author$project$Nats$Internal$SocketState$handleTimeouts(msTime),
 					state.sockets);
-				var sockets = _v8.a;
-				var msgs = _v8.b;
+				var sockets = _v7.a;
+				var msgs = _v7.b;
 				return _Utils_Tuple3(
 					$author$project$Nats$State(
 						_Utils_update(
@@ -13801,4 +13797,4 @@ _Platform_export({'Main':{'init':$author$project$Main$main(
 			return $elm$json$Json$Decode$succeed(
 				{now: now});
 		},
-		A2($elm$json$Json$Decode$field, 'now', $elm$json$Json$Decode$int)))({"versions":{"elm":"0.19.1"},"types":{"message":"Main.Msg","aliases":{"Nats.Protocol.Message":{"args":["datatype"],"type":"{ subject : String.String, replyTo : String.String, size : Basics.Int, data : datatype }"},"Nats.Msg":{"args":["msg"],"type":"Nats.Internal.Types.Msg msg"},"Nats.Protocol.ServerInfo":{"args":[],"type":"{ server_id : String.String, version : String.String, go : String.String, host : String.String, port_ : Basics.Int, auth_required : Basics.Bool, max_payload : Basics.Int }"},"Nats.Internal.Ports.Ack":{"args":[],"type":"{ sid : String.String, ack : String.String }"},"Nats.Internal.Ports.Message":{"args":[],"type":"{ sid : String.String, ack : Maybe.Maybe String.String, message : String.String }"}},"unions":{"Main.Msg":{"args":[],"tags":{"NoOp":[],"NatsMsg":["Nats.Msg Main.Msg"],"SubCompMsg":["SubComp.Msg"],"NatsConnect":["Nats.Protocol.ServerInfo"],"OnSocketEvent":["Nats.Events.SocketEvent"],"Publish":[],"InputText":["String.String"],"SendRequest":[],"RequestError":[],"ReceiveResponse":["String.String"],"HandleRequest":["Nats.Protocol.Message String.String"]}},"Basics.Bool":{"args":[],"tags":{"True":[],"False":[]}},"Basics.Int":{"args":[],"tags":{"Int":[]}},"Nats.Internal.Types.Msg":{"args":["msg"],"tags":{"OnAck":["Nats.Internal.Ports.Ack"],"OnOpen":["String.String"],"OnClose":["String.String"],"OnError":["{ sid : String.String, message : String.String }"],"OnMessage":["Nats.Internal.Ports.Message"],"OnTime":["Time.Posix"]}},"SubComp.Msg":{"args":[],"tags":{"Subscribe":[],"Unsubscribe":[],"Receive":["Basics.Int","String.String"]}},"Nats.Events.SocketEvent":{"args":[],"tags":{"SocketOpen":["Nats.Protocol.ServerInfo"],"SocketClose":[],"SocketError":["String.String"]}},"String.String":{"args":[],"tags":{"String":[]}},"Maybe.Maybe":{"args":["a"],"tags":{"Just":["a"],"Nothing":[]}},"Time.Posix":{"args":[],"tags":{"Posix":["Basics.Int"]}}}}})}});}(this));
+		A2($elm$json$Json$Decode$field, 'now', $elm$json$Json$Decode$int)))({"versions":{"elm":"0.19.1"},"types":{"message":"Main.Msg","aliases":{"Nats.Protocol.Message":{"args":["datatype"],"type":"{ subject : String.String, replyTo : String.String, size : Basics.Int, data : datatype }"},"Nats.Msg":{"args":["datatype","msg"],"type":"Nats.Internal.Types.Msg datatype msg"},"Nats.Protocol.ServerInfo":{"args":[],"type":"{ server_id : String.String, version : String.String, go : String.String, host : String.String, port_ : Basics.Int, auth_required : Basics.Bool, max_payload : Basics.Int }"},"Nats.Internal.Ports.Ack":{"args":[],"type":"{ sid : String.String, ack : String.String }"},"Nats.Internal.Ports.Message":{"args":["datatype"],"type":"{ sid : String.String, ack : Maybe.Maybe String.String, message : datatype }"}},"unions":{"Main.Msg":{"args":[],"tags":{"NoOp":[],"NatsMsg":["Nats.Msg String.String Main.Msg"],"SubCompMsg":["SubComp.Msg"],"NatsConnect":["Nats.Protocol.ServerInfo"],"OnSocketEvent":["Nats.Events.SocketEvent"],"Publish":[],"InputText":["String.String"],"SendRequest":[],"RequestError":[],"ReceiveResponse":["String.String"],"HandleRequest":["Nats.Protocol.Message String.String"]}},"Basics.Bool":{"args":[],"tags":{"True":[],"False":[]}},"Basics.Int":{"args":[],"tags":{"Int":[]}},"Nats.Internal.Types.Msg":{"args":["datatype","msg"],"tags":{"OnAck":["Nats.Internal.Ports.Ack"],"OnOpen":["String.String"],"OnClose":["String.String"],"OnError":["{ sid : String.String, message : String.String }"],"OnMessage":["Nats.Internal.Ports.Message datatype"],"OnTime":["Time.Posix"]}},"SubComp.Msg":{"args":[],"tags":{"Subscribe":[],"Unsubscribe":[],"Receive":["Basics.Int","String.String"]}},"Nats.Events.SocketEvent":{"args":[],"tags":{"SocketOpen":["Nats.Protocol.ServerInfo"],"SocketClose":[],"SocketError":["String.String"]}},"String.String":{"args":[],"tags":{"String":[]}},"Maybe.Maybe":{"args":["a"],"tags":{"Just":["a"],"Nothing":[]}},"Time.Posix":{"args":[],"tags":{"Posix":["Basics.Int"]}}}}})}});}(this));

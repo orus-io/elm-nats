@@ -26,11 +26,13 @@ import Bytes exposing (Bytes)
 
 
 
-port natsSend : Nats.PortsAPI.Send msg
-port natsReceive : Nats.PortsAPI.Receive msg
+port natsSend : Nats.PortsAPI.Send String msg
 
 
-natsConfig : Nats.Config String Msg
+port natsReceive : Nats.PortsAPI.Receive String msg
+
+
+natsConfig : Nats.Config String String Msg
 natsConfig =
     Nats.Config.string NatsMsg
         { send = natsSend
@@ -89,7 +91,7 @@ applyNatsEffect effect model =
 
 type Msg
     = NoOp
-    | NatsMsg (Nats.Msg Msg)
+    | NatsMsg (Nats.Msg String Msg)
     | SubCompMsg SubComp.Msg
     | NatsConnect Nats.Protocol.ServerInfo
     | OnSocketEvent Nats.Events.SocketEvent

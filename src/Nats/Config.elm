@@ -1,8 +1,8 @@
-module Nats.Config exposing (bytes, string, withDebug)
+module Nats.Config exposing (bytes, bytesPorts, string, withDebug)
 
 {-| Define the configuration for NATS
 
-@docs bytes, string, withDebug
+@docs bytes, bytesPorts, string, withDebug
 
 -}
 
@@ -28,7 +28,7 @@ message.
         Nats.Config.init NatsMsg {}
 
 -}
-string : (Msg msg -> msg) -> Ports (Msg msg) -> Config String msg
+string : (Msg String msg -> msg) -> Ports String (Msg String msg) -> Config String String msg
 string parentMsg ports =
     Types.Config
         { parentMsg = parentMsg
@@ -46,18 +46,10 @@ string parentMsg ports =
 
 {-| Create a NATS configuration for bytes messages
 
-The parentMsg typically transform a Nats.Msg into the host application top-level
-message.
-
-    type Msg =
-        NatsMsg (Nats.Msg Msg)
-        | ...
-
-    natsConfig =
-        Nats.Config.init NatsMsg {}
+The binary contents will be base64 encoded/decoded for passing through the ports
 
 -}
-bytes : (Msg msg -> msg) -> Ports (Msg msg) -> Config Bytes msg
+bytes : (Msg Bytes msg -> msg) -> Ports String (Msg Bytes msg) -> Config Bytes String msg
 bytes parentMsg ports =
     Types.Config
         { parentMsg = parentMsg
@@ -83,8 +75,32 @@ bytes parentMsg ports =
         }
 
 
+{-| Create a NATS configuration for bytes messages through ports supporting
+the Bytes type.
+
+The binary contents will be passed as is through the ports.
+Currently the only known compiler supporting this is the Lamdera compiler, which
+requires the dependency "lamdera/codecs" to be added to your project.
+
+-}
+bytesPorts : (Msg Bytes msg -> msg) -> Ports Bytes (Msg Bytes msg) -> Config Bytes Bytes msg
+bytesPorts parentMsg ports =
+    Types.Config
+        { parentMsg = parentMsg
+        , ports = ports
+        , debug = False
+        , onError = Nothing
+        , mode = "binaryPort"
+        , parse = Protocol.parseBytes
+        , size = Bytes.width
+        , write = Protocol.toBytes
+        , fromPortMessage = Ok
+        , toPortMessage = identity
+        }
+
+
 {-| Enable debug
 -}
-withDebug : Bool -> Config datatype msg -> Config datatype msg
+withDebug : Bool -> Config datatype portdatatype msg -> Config datatype portdatatype msg
 withDebug value (Types.Config cfg) =
     Types.Config { cfg | debug = value }

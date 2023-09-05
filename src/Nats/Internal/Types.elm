@@ -13,18 +13,18 @@ import Nats.Protocol as Protocol
 import Time
 
 
-type Config datatype msg
+type Config datatype portdatatype msg
     = Config
-        { parentMsg : Msg msg -> msg
-        , ports : PortsAPI.Ports (Msg msg)
+        { parentMsg : Msg datatype msg -> msg
+        , ports : PortsAPI.Ports portdatatype (Msg datatype msg)
         , debug : Bool
         , onError : Maybe (String -> msg)
         , size : datatype -> Int
         , mode : String
         , parse : datatype -> Maybe (Protocol.PartialOperation datatype) -> Protocol.OperationResult datatype
         , write : Protocol.Operation datatype -> datatype
-        , fromPortMessage : String -> Result String datatype
-        , toPortMessage : datatype -> String
+        , fromPortMessage : portdatatype -> Result String datatype
+        , toPortMessage : datatype -> portdatatype
         }
 
 
@@ -40,12 +40,12 @@ type Socket
     = Socket SocketProps
 
 
-type Msg msg
+type Msg datatype msg
     = OnAck Ports.Ack
     | OnOpen String
     | OnClose String
     | OnError { sid : String, message : String }
-    | OnMessage Ports.Message
+    | OnMessage (Ports.Message datatype)
     | OnTime Time.Posix
 
 

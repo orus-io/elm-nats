@@ -16,31 +16,31 @@ import Nats.Internal.Ports as Ports
 
 {-| A command for the js side
 -}
-type alias Command =
-    Ports.Command
+type alias Command datatype =
+    Ports.Command datatype
 
 
 {-| An event from the js side
 -}
-type alias Event =
-    Ports.Event
+type alias Event datatype =
+    Ports.Event datatype
 
 
 {-| the port signature for sending commands to the js side
 -}
-type alias Send msg =
-    Command -> Cmd msg
+type alias Send datatype msg =
+    Command datatype -> Cmd msg
 
 
 {-| the port signature for receiving events from the js side
 -}
-type alias Receive msg =
-    (Event -> msg) -> Sub msg
+type alias Receive datatype msg =
+    (Event datatype -> msg) -> Sub msg
 
 
 {-| This is the API that the ports module must implement.
 -}
-type alias Ports msg =
-    { send : Send msg
-    , receive : Receive msg
+type alias Ports datatype msg =
+    { send : Send datatype msg
+    , receive : Receive datatype msg
     }

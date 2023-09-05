@@ -10,10 +10,10 @@ module Nats.Internal.Ports exposing
     )
 
 
-type alias Message =
+type alias Message datatype =
     { sid : String
     , ack : Maybe String
-    , message : String
+    , message : datatype
     }
 
 
@@ -31,23 +31,23 @@ type alias Socket =
     }
 
 
-type alias Command =
+type alias Command datatype =
     { open : Maybe Socket
     , close : Maybe String
-    , send : Maybe Message
+    , send : Maybe (Message datatype)
     }
 
 
-type alias Event =
+type alias Event datatype =
     { ack : Maybe Ack
     , open : Maybe String
     , close : Maybe String
     , error : Maybe { sid : String, message : String }
-    , message : Maybe Message
+    , message : Maybe (Message datatype)
     }
 
 
-open : Socket -> Command
+open : Socket -> Command datatype
 open socket =
     { open = Just socket
     , close = Nothing
@@ -55,7 +55,7 @@ open socket =
     }
 
 
-close : String -> Command
+close : String -> Command datatype
 close sid =
     { open = Nothing
     , close = Just sid
@@ -63,7 +63,7 @@ close sid =
     }
 
 
-send : Message -> Command
+send : Message datatype -> Command datatype
 send msg =
     { open = Nothing
     , close = Nothing

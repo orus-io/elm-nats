@@ -194,7 +194,7 @@ finalizeSubscriptions state =
 
 
 addRequest :
-    Config datatype msg
+    Config datatype portdatatype msg
     ->
         { subject : String
         , inbox : String
@@ -226,7 +226,7 @@ addRequest (Config cfg) req state =
     )
 
 
-parse : Config datatype msg -> datatype -> SocketState datatype msg -> ( SocketState datatype msg, Maybe (Protocol.Operation datatype) )
+parse : Config datatype portdatatype msg -> datatype -> SocketState datatype msg -> ( SocketState datatype msg, Maybe (Protocol.Operation datatype) )
 parse (Config cfg) data state =
     case cfg.parse data state.partialOperation of
         Protocol.Operation op ->
@@ -271,7 +271,7 @@ handleTimeouts time state =
     )
 
 
-receive : Config datatype msg -> datatype -> SocketState datatype msg -> ( SocketState datatype msg, List msg, List (Protocol.Operation datatype) )
+receive : Config datatype portdatatype msg -> datatype -> SocketState datatype msg -> ( SocketState datatype msg, List msg, List (Protocol.Operation datatype) )
 receive cfg data state =
     let
         ( parseState, maybeOperation ) =
