@@ -7,6 +7,7 @@ module Nats.Internal.Types exposing
     )
 
 import Nats.Errors exposing (Timeout)
+import Nats.Internal.Ports as Ports
 import Nats.PortsAPI as PortsAPI
 import Nats.Protocol as Protocol
 import Time
@@ -40,11 +41,11 @@ type Socket
 
 
 type Msg msg
-    = OnOpen String
+    = OnAck Ports.Ack
+    | OnOpen String
     | OnClose String
     | OnError { sid : String, message : String }
-    | OnMessage PortsAPI.Message
-    | OnAck PortsAPI.Ack
+    | OnMessage Ports.Message
     | OnTime Time.Posix
 
 

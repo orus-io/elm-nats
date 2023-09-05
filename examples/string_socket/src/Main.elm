@@ -17,46 +17,24 @@ import Random
 import SubComp
 import Time
 
+import Bytes exposing (Bytes)
 
 
 ---- PORTS ----
 
 
-port natsOpen : Nats.PortsAPI.Open msg
 
 
-port natsClose : String -> Cmd msg
 
-
-port natsOnAck : (Nats.PortsAPI.Ack -> msg) -> Sub msg
-
-
-port natsOnOpen : (String -> msg) -> Sub msg
-
-
-port natsOnClose : (String -> msg) -> Sub msg
-
-
-port natsOnError : ({ sid : String, message : String } -> msg) -> Sub msg
-
-
-port natsOnMessage : (Nats.PortsAPI.Message -> msg) -> Sub msg
-
-
-port natsSend : Nats.PortsAPI.Message -> Cmd msg
+port natsSend : Nats.PortsAPI.Send msg
+port natsReceive : Nats.PortsAPI.Receive msg
 
 
 natsConfig : Nats.Config String Msg
 natsConfig =
     Nats.Config.string NatsMsg
-        { open = natsOpen
-        , close = natsClose
-        , send = natsSend
-        , onAck = natsOnAck
-        , onOpen = natsOnOpen
-        , onClose = natsOnClose
-        , onError = natsOnError
-        , onMessage = natsOnMessage
+        { send = natsSend
+        , receive = natsReceive
         }
         |> Nats.Config.withDebug True
 

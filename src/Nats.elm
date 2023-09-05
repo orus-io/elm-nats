@@ -43,12 +43,12 @@ module Nats exposing
 
 import Nats.Errors exposing (Timeout)
 import Nats.Events as Events exposing (SocketEvent)
+import Nats.Internal.Ports as Ports
 import Nats.Internal.SocketState as SocketState exposing (SocketState)
 import Nats.Internal.SocketStateCollection as SocketStateCollection exposing (SocketStateCollection)
 import Nats.Internal.Sub as ISub exposing (RealSub(..), Sub(..))
 import Nats.Internal.Types as Types exposing (Effect(..))
 import Nats.Nuid as Nuid exposing (Nuid)
-import Nats.PortsAPI as PortsAPI
 import Nats.Protocol as Protocol
 import Nats.Socket as Socket exposing (Socket)
 import Platform.Sub
@@ -99,16 +99,36 @@ type State datatype msg
         }
 
 
+onReceive : Ports.Event -> Msg msg
+onReceive event =
+    case ( event.ack, event.open, event.close ) of
+        ( Just ack, _, _ ) ->
+            Types.OnAck ack
+
+        ( _, Just sid, _ ) ->
+            Types.OnOpen sid
+
+        ( _, _, Just sid ) ->
+            Types.OnClose sid
+
+        _ ->
+            case ( event.error, event.message ) of
+                ( Just err, _ ) ->
+                    Types.OnError err
+
+                ( _, Just msg ) ->
+                    Types.OnMessage msg
+
+                _ ->
+                    Types.OnError { sid = "", message = "invalid event coming from the port" }
+
+
 {-| Connect the nats internal state to the ports
 -}
 subscriptions : Config datatype msg -> State datatype msg -> Platform.Sub.Sub msg
 subscriptions (Types.Config cfg) _ =
     Sub.batch
-        [ cfg.ports.onOpen Types.OnOpen
-        , cfg.ports.onClose Types.OnClose
-        , cfg.ports.onError Types.OnError
-        , cfg.ports.onMessage Types.OnMessage
-        , cfg.ports.onAck Types.OnAck
+        [ cfg.ports.receive onReceive
         , Time.every 1000 Types.OnTime
         ]
         |> Sub.map cfg.parentMsg
@@ -502,12 +522,14 @@ handleSubHelper (Types.Config cfg) sub ((State state) as oState) =
                                         else
                                             Just id
                         }
-                    , cfg.ports.open
-                        { sid = props.id
-                        , url = props.url
-                        , mode = cfg.mode
-                        , debug = props.debug || cfg.debug
-                        }
+                    , cfg.ports.send
+                        (Ports.open
+                            { sid = props.id
+                            , url = props.url
+                            , mode = cfg.mode
+                            , debug = props.debug || cfg.debug
+                            }
+                        )
                         |> Cmd.map cfg.parentMsg
                     )
 
@@ -555,9 +577,9 @@ applyEffectAndSub (Types.Config cfg) effect sub state =
     ( s2, Cmd.batch [ cmd1, cmd2 ] )
 
 
-doSend : Config datatype msg -> PortsAPI.Message -> Cmd (Msg msg)
+doSend : Config datatype msg -> Ports.Message -> Cmd (Msg msg)
 doSend (Types.Config cfg) message =
-    cfg.ports.send message
+    cfg.ports.send (Ports.send message)
 
 
 logError : Types.Config datatype msg -> String -> Cmd msg

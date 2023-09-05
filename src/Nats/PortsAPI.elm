@@ -1,101 +1,46 @@
 module Nats.PortsAPI exposing
-    ( Message, Ack, Socket, Ports
-    , Open, Close, Send, OnAck, OnOpen, OnClose, OnError, OnMessage
+    ( Ports
+    , Command, Event, Send, Receive
     )
 
 {-| Defines the API for the ports that are required to interface with JS.
 
-@docs Message, Ack, Socket, Ports
+@docs Ports
 
-@docs Open, Close, Send, OnAck, OnOpen, OnClose, OnError, OnMessage
+@docs Command, Event, Send, Receive
 
 -}
 
+import Nats.Internal.Ports as Ports
 
-{-| This is the Message type that is send/received on some of the ports
+
+{-| A command for the js side
 -}
-type alias Message =
-    { sid : String
-    , ack : Maybe String
-    , message : String
-    }
+type alias Command =
+    Ports.Command
 
 
-{-| Acknowlegments. Sent by the js side after it has done some task
+{-| An event from the js side
 -}
-type alias Ack =
-    { sid : String
-    , ack : String
-    }
+type alias Event =
+    Ports.Event
 
 
-{-| All the data needed by the js side to open a socket
+{-| the port signature for sending commands to the js side
 -}
-type alias Socket =
-    { sid : String
-    , url : String
-    , mode : String
-    , debug : Bool
-    }
+type alias Send msg =
+    Command -> Cmd msg
+
+
+{-| the port signature for receiving events from the js side
+-}
+type alias Receive msg =
+    (Event -> msg) -> Sub msg
 
 
 {-| This is the API that the ports module must implement.
 -}
 type alias Ports msg =
-    { open : Open msg
-    , close : Close msg
-    , send : Send msg
-    , onAck : OnAck msg
-    , onOpen : OnOpen msg
-    , onClose : OnClose msg
-    , onError : OnError msg
-    , onMessage : OnMessage msg
+    { send : Send msg
+    , receive : Receive msg
     }
-
-
-{-| The 'open' port signature
--}
-type alias Open msg =
-    Socket -> Cmd msg
-
-
-{-| The 'close' port signature
--}
-type alias Close msg =
-    String -> Cmd msg
-
-
-{-| The 'send' port signature
--}
-type alias Send msg =
-    Message -> Cmd msg
-
-
-{-| The 'onAck' port signature
--}
-type alias OnAck msg =
-    (Ack -> msg) -> Sub msg
-
-
-{-| The 'onOpen' port signature
--}
-type alias OnOpen msg =
-    (String -> msg) -> Sub msg
-
-
-{-| The 'onClose' port signature
--}
-type alias OnClose msg =
-    (String -> msg) -> Sub msg
-
-
-{-| The 'onError' port signature
--}
-type alias OnError msg =
-    ({ sid : String, message : String } -> msg) -> Sub msg
-
-
-{-| The 'onMessage' port signature
--}
-type alias OnMessage msg =
-    (Message -> msg) -> Sub msg

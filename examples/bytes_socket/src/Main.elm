@@ -25,43 +25,19 @@ import Bytes.Decode
 ---- PORTS ----
 
 
-port natsOpen : Nats.PortsAPI.Open msg
+port natsSend : Nats.PortsAPI.Send msg
 
 
-port natsClose : String -> Cmd msg
-
-
-port natsOnOpen : (String -> msg) -> Sub msg
-
-
-port natsOnClose : (String -> msg) -> Sub msg
-
-
-port natsOnError : ({ sid : String, message : String } -> msg) -> Sub msg
-
-
-port natsOnMessage : (Nats.PortsAPI.Message -> msg) -> Sub msg
-
-
-port natsOnAck : (Nats.PortsAPI.Ack -> msg) -> Sub msg
-
-
-port natsSend : Nats.PortsAPI.Message -> Cmd msg
+port natsReceive : Nats.PortsAPI.Receive msg
 
 
 natsConfig : Nats.Config Bytes Msg
 natsConfig =
     Nats.Config.bytes NatsMsg
-        { open = natsOpen
-        , close = natsClose
-        , onOpen = natsOnOpen
-        , onClose = natsOnClose
-        , onError = natsOnError
-        , onMessage = natsOnMessage
-        , onAck = natsOnAck
-        , send = natsSend
+        { send = natsSend
+        , receive = natsReceive
         }
-        |> Nats.Config.withDebug False
+        |> Nats.Config.withDebug True
 
 
 
