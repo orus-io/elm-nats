@@ -8,7 +8,7 @@ function setupNatsPorts(app) {
             const socket = sockets[sid];
 
             if (socket) {
-                socket.Close();
+                socket.socket.close();
             }
         } else if (command.send) {
             const sid = command.send.sid;

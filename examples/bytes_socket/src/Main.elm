@@ -14,14 +14,14 @@ import Nats.Events
 import Nats.Protocol
 import Nats.Socket
 import Nats.Sub
-import NatsPorts
+import NatsBinaryPorts
 import Random
 import SubComp
 import Time
 
 
 natsConfig =
-    NatsPorts.natsConfig NatsMsg
+    NatsBinaryPorts.natsConfig NatsMsg
 
 
 

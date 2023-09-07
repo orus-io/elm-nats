@@ -10988,6 +10988,7 @@ var $author$project$Main$init = function (flags) {
 			response: $elm$core$Maybe$Nothing,
 			serverInfo: $elm$core$Maybe$Nothing,
 			socket: A2($author$project$Nats$Socket$new, '0', 'ws://localhost:8087'),
+			socketOpened: true,
 			subcomp: $author$project$SubComp$init
 		},
 		$elm$core$Platform$Cmd$none);
@@ -11930,6 +11931,14 @@ var $author$project$Nats$subscriptions = F2(
 var $author$project$Main$subscriptions = function (model) {
 	return A2($author$project$Nats$subscriptions, $author$project$Main$natsConfig, model.nats);
 };
+var $author$project$Nats$Socket$Closing = {$: 'Closing'};
+var $author$project$Nats$Internal$Ports$close = function (sid) {
+	return {
+		close: $elm$core$Maybe$Just(sid),
+		open: $elm$core$Maybe$Nothing,
+		send: $elm$core$Maybe$Nothing
+	};
+};
 var $author$project$Nats$Internal$Ports$send = function (msg) {
 	return {
 		close: $elm$core$Maybe$Nothing,
@@ -12050,6 +12059,7 @@ var $author$project$Nats$Internal$SocketState$finalizeSubscriptions = function (
 		return _Utils_Tuple2(state, _List_Nil);
 	}
 };
+var $author$project$Nats$Internal$SocketStateCollection$fromList = $author$project$Nats$Internal$SocketStateCollection$SocketStateCollection;
 var $author$project$Nats$Internal$SocketState$Sub = {$: 'Sub'};
 var $author$project$Nats$Internal$SocketState$getSubscriptionBySubjectGroup = F2(
 	function (_v0, state) {
@@ -12250,7 +12260,7 @@ var $author$project$Nats$handleSubHelper = F3(
 			var onEvent = sub.c;
 			var _v2 = A2($author$project$Nats$Internal$SocketStateCollection$findByID, props.id, state.sockets);
 			if (_v2.$ === 'Nothing') {
-				return _Utils_Tuple2(
+				return _Utils_Tuple3(
 					$author$project$Nats$State(
 						_Utils_update(
 							state,
@@ -12269,6 +12279,7 @@ var $author$project$Nats$handleSubHelper = F3(
 									A3($author$project$Nats$Internal$SocketState$init, options, onEvent, socket),
 									state.sockets)
 							})),
+					$elm$core$Maybe$Just(props.id),
 					A2(
 						$elm$core$Platform$Cmd$map,
 						cfg.parentMsg,
@@ -12276,7 +12287,10 @@ var $author$project$Nats$handleSubHelper = F3(
 							$author$project$Nats$Internal$Ports$open(
 								{debug: props.debug || cfg.debug, mode: cfg.mode, sid: props.id, url: props.url}))));
 			} else {
-				return _Utils_Tuple2(oState, $elm$core$Platform$Cmd$none);
+				return _Utils_Tuple3(
+					oState,
+					$elm$core$Maybe$Just(props.id),
+					$elm$core$Platform$Cmd$none);
 			}
 		} else {
 			var sid = sub.a.sid;
@@ -12288,8 +12302,9 @@ var $author$project$Nats$handleSubHelper = F3(
 				A2($elm$core$Maybe$withDefault, '', state.defaultSocket),
 				sid);
 			if (_v4 === '') {
-				return _Utils_Tuple2(
+				return _Utils_Tuple3(
 					oState,
+					$elm$core$Maybe$Nothing,
 					A2(
 						$author$project$Nats$logError,
 						$author$project$Nats$Internal$Types$Config(cfg),
@@ -12309,17 +12324,9 @@ var $author$project$Nats$handleSubHelper = F3(
 					},
 					oState);
 				var newState = _v5.a;
-				return _Utils_Tuple2(newState, $elm$core$Platform$Cmd$none);
+				return _Utils_Tuple3(newState, $elm$core$Maybe$Nothing, $elm$core$Platform$Cmd$none);
 			}
 		}
-	});
-var $elm$core$Tuple$mapSecond = F2(
-	function (func, _v0) {
-		var x = _v0.a;
-		var y = _v0.b;
-		return _Utils_Tuple2(
-			x,
-			func(y));
 	});
 var $elm$core$Tuple$mapFirst = F2(
 	function (func, _v0) {
@@ -12328,6 +12335,14 @@ var $elm$core$Tuple$mapFirst = F2(
 		return _Utils_Tuple2(
 			func(x),
 			y);
+	});
+var $elm$core$Tuple$mapSecond = F2(
+	function (func, _v0) {
+		var x = _v0.a;
+		var y = _v0.b;
+		return _Utils_Tuple2(
+			x,
+			func(y));
 	});
 var $author$project$Nats$Internal$SocketStateCollection$mapWithEffect = F2(
 	function (fn, _v0) {
@@ -12351,35 +12366,101 @@ var $author$project$Nats$Internal$SocketStateCollection$mapWithEffect = F2(
 				_Utils_Tuple2(_List_Nil, _List_Nil),
 				list));
 	});
+var $elm$core$List$any = F2(
+	function (isOkay, list) {
+		any:
+		while (true) {
+			if (!list.b) {
+				return false;
+			} else {
+				var x = list.a;
+				var xs = list.b;
+				if (isOkay(x)) {
+					return true;
+				} else {
+					var $temp$isOkay = isOkay,
+						$temp$list = xs;
+					isOkay = $temp$isOkay;
+					list = $temp$list;
+					continue any;
+				}
+			}
+		}
+	});
+var $elm$core$List$member = F2(
+	function (x, xs) {
+		return A2(
+			$elm$core$List$any,
+			function (a) {
+				return _Utils_eq(a, x);
+			},
+			xs);
+	});
+var $elm$core$List$partition = F2(
+	function (pred, list) {
+		var step = F2(
+			function (x, _v0) {
+				var trues = _v0.a;
+				var falses = _v0.b;
+				return pred(x) ? _Utils_Tuple2(
+					A2($elm$core$List$cons, x, trues),
+					falses) : _Utils_Tuple2(
+					trues,
+					A2($elm$core$List$cons, x, falses));
+			});
+		return A3(
+			$elm$core$List$foldr,
+			step,
+			_Utils_Tuple2(_List_Nil, _List_Nil),
+			list);
+	});
+var $author$project$Nats$Internal$SocketState$setStatus = F2(
+	function (status, state) {
+		return _Utils_update(
+			state,
+			{status: status});
+	});
+var $author$project$Nats$Internal$SocketStateCollection$toList = function (_v0) {
+	var list = _v0.a;
+	return list;
+};
 var $author$project$Nats$handleSub = F3(
 	function (_v0, _v1, state) {
 		var cfg = _v0.a;
 		var subList = _v1.a;
-		var _v2 = A2(
-			$elm$core$Tuple$mapSecond,
-			$elm$core$Platform$Cmd$batch,
-			A3(
-				$elm$core$List$foldl,
-				F2(
-					function (innerSub, _v3) {
-						var st = _v3.a;
-						var cmdList = _v3.b;
-						var _v4 = A3(
-							$author$project$Nats$handleSubHelper,
-							$author$project$Nats$Internal$Types$Config(cfg),
-							innerSub,
-							st);
-						var newState = _v4.a;
-						var newCmd = _v4.b;
-						return _Utils_Tuple2(
-							newState,
-							A2($elm$core$List$cons, newCmd, cmdList));
-					}),
-				_Utils_Tuple2(state, _List_Nil),
-				subList));
+		var _v2 = A3(
+			$elm$core$List$foldl,
+			F2(
+				function (innerSub, _v3) {
+					var st = _v3.a;
+					var socketList = _v3.b;
+					var cmdList = _v3.c;
+					var _v4 = A3(
+						$author$project$Nats$handleSubHelper,
+						$author$project$Nats$Internal$Types$Config(cfg),
+						innerSub,
+						st);
+					var newState = _v4.a;
+					var socketId = _v4.b;
+					var newCmd = _v4.c;
+					return _Utils_Tuple3(
+						newState,
+						function () {
+							if (socketId.$ === 'Nothing') {
+								return socketList;
+							} else {
+								var id = socketId.a;
+								return A2($elm$core$List$cons, id, socketList);
+							}
+						}(),
+						A2($elm$core$List$cons, newCmd, cmdList));
+				}),
+			_Utils_Tuple3(state, _List_Nil, _List_Nil),
+			subList);
 		var nState = _v2.a.a;
-		var cmd = _v2.b;
-		var _v5 = A2(
+		var socketIds = _v2.b;
+		var cmds = _v2.c;
+		var _v6 = A2(
 			$elm$core$Tuple$mapSecond,
 			$elm$core$List$concat,
 			A2(
@@ -12410,15 +12491,42 @@ var $author$project$Nats$handleSub = F3(
 						$author$project$Nats$Internal$SocketState$finalizeSubscriptions(socket));
 				},
 				nState.sockets));
-		var sockets = _v5.a;
-		var opsCmds = _v5.b;
+		var sockets = _v6.a;
+		var opsCmds = _v6.b;
+		var _v8 = A2(
+			$elm$core$Tuple$mapSecond,
+			$elm$core$List$map(
+				function (socket) {
+					return A2(
+						$elm$core$Platform$Cmd$map,
+						cfg.parentMsg,
+						cfg.ports.send(
+							$author$project$Nats$Internal$Ports$close(socket.socket.id)));
+				}),
+			A2(
+				$elm$core$Tuple$mapFirst,
+				A2(
+					$elm$core$Basics$composeR,
+					$elm$core$List$map(
+						$author$project$Nats$Internal$SocketState$setStatus($author$project$Nats$Socket$Closing)),
+					$author$project$Nats$Internal$SocketStateCollection$fromList),
+				A2(
+					$elm$core$List$partition,
+					function (socket) {
+						return A2($elm$core$List$member, socket.socket.id, socketIds);
+					},
+					$author$project$Nats$Internal$SocketStateCollection$toList(sockets))));
+		var cleanSockets = _v8.a;
+		var closeCmds = _v8.b;
 		return _Utils_Tuple2(
 			$author$project$Nats$State(
 				_Utils_update(
 					nState,
-					{sockets: sockets})),
+					{sockets: cleanSockets})),
 			$elm$core$Platform$Cmd$batch(
-				A2($elm$core$List$cons, cmd, opsCmds)));
+				_Utils_ap(
+					cmds,
+					_Utils_ap(opsCmds, closeCmds))));
 	});
 var $author$project$Nats$Protocol$PUB = function (a) {
 	return {$: 'PUB', a: a};
@@ -12770,6 +12878,8 @@ var $author$project$SubComp$natsSubscriptions = function (model) {
 			},
 			A2($elm$core$List$range, 0, model.subCounter - 1)));
 };
+var $author$project$Nats$Internal$Sub$none = $author$project$Nats$Internal$Sub$Sub(_List_Nil);
+var $author$project$Nats$Sub$none = $author$project$Nats$Internal$Sub$none;
 var $author$project$Nats$Socket$withUserPass = F3(
 	function (user, pass, options) {
 		return _Utils_update(
@@ -12788,7 +12898,7 @@ var $author$project$Main$natsSubscriptions = function (model) {
 				$author$project$Main$SubCompMsg,
 				$author$project$SubComp$natsSubscriptions(model.subcomp)),
 				A3($author$project$Nats$groupSubscribe, 'say.hello.to.me', 'server', $author$project$Main$HandleRequest),
-				A3(
+				model.socketOpened ? A3(
 				$author$project$Nats$connect,
 				A3(
 					$author$project$Nats$Socket$withUserPass,
@@ -12796,7 +12906,7 @@ var $author$project$Main$natsSubscriptions = function (model) {
 					'test',
 					A2($author$project$Nats$Socket$connectOptions, 'Demo', '0.1')),
 				model.socket,
-				$author$project$Main$OnSocketEvent)
+				$author$project$Main$OnSocketEvent) : $author$project$Nats$Sub$none
 			]));
 };
 var $author$project$Main$applyNatsEffect = F2(
@@ -12884,12 +12994,6 @@ var $author$project$Nats$Socket$Error = function (a) {
 };
 var $author$project$Nats$Socket$Opened = {$: 'Opened'};
 var $author$project$Nats$Socket$Connected = {$: 'Connected'};
-var $author$project$Nats$Internal$SocketState$setStatus = F2(
-	function (status, state) {
-		return _Utils_update(
-			state,
-			{status: status});
-	});
 var $author$project$Nats$Internal$SocketState$ackCONNECT = $author$project$Nats$Internal$SocketState$setStatus($author$project$Nats$Socket$Connected);
 var $author$project$Nats$Internal$SocketState$Closed = {$: 'Closed'};
 var $author$project$Nats$Internal$SocketState$handleTimeouts = F2(
@@ -13109,20 +13213,8 @@ var $author$project$Nats$updateWithEffects = F3(
 					$author$project$Nats$updateSocket,
 					$author$project$Nats$Internal$Types$Config(cfg),
 					sid,
-					function (socket) {
-						var _v2 = socket.status;
-						if (_v2.$ === 'Closing') {
-							return _Utils_Tuple3($elm$core$Maybe$Nothing, _List_Nil, $elm$core$Platform$Cmd$none);
-						} else {
-							return _Utils_Tuple3(
-								$elm$core$Maybe$Just(
-									A2(
-										$author$project$Nats$Internal$SocketState$setStatus,
-										$author$project$Nats$Socket$Error('socket closed'),
-										socket)),
-								_List_Nil,
-								$elm$core$Platform$Cmd$none);
-						}
+					function (_v2) {
+						return _Utils_Tuple3($elm$core$Maybe$Nothing, _List_Nil, $elm$core$Platform$Cmd$none);
 					},
 					oState);
 			case 'OnError':
@@ -13374,7 +13466,12 @@ var $author$project$Main$update = F2(
 			case 'NoOp':
 				return _Utils_Tuple3(model, $author$project$Nats$Effect$none, $elm$core$Platform$Cmd$none);
 			default:
-				return _Utils_Tuple3(model, $author$project$Nats$Effect$none, $elm$core$Platform$Cmd$none);
+				return _Utils_Tuple3(
+					_Utils_update(
+						model,
+						{socketOpened: !model.socketOpened}),
+					$author$project$Nats$Effect$none,
+					$elm$core$Platform$Cmd$none);
 		}
 	});
 var $author$project$Main$updateWrapper = F2(
@@ -13397,6 +13494,7 @@ var $author$project$Main$InputText = function (a) {
 };
 var $author$project$Main$Publish = {$: 'Publish'};
 var $author$project$Main$SendRequest = {$: 'SendRequest'};
+var $author$project$Main$SwitchOpened = {$: 'SwitchOpened'};
 var $elm$html$Html$h4 = _VirtualDom_node('h4');
 var $elm$html$Html$Attributes$placeholder = $elm$html$Html$Attributes$stringProperty('placeholder');
 var $elm$html$Html$h1 = _VirtualDom_node('h1');
@@ -13420,24 +13518,6 @@ var $author$project$Main$panel = function (body) {
 				body)
 			]));
 };
-var $elm$core$List$partition = F2(
-	function (pred, list) {
-		var step = F2(
-			function (x, _v0) {
-				var trues = _v0.a;
-				var falses = _v0.b;
-				return pred(x) ? _Utils_Tuple2(
-					A2($elm$core$List$cons, x, trues),
-					falses) : _Utils_Tuple2(
-					trues,
-					A2($elm$core$List$cons, x, falses));
-			});
-		return A3(
-			$elm$core$List$foldr,
-			step,
-			_Utils_Tuple2(_List_Nil, _List_Nil),
-			list);
-	});
 var $author$project$Main$scaffolding = function (boxes) {
 	return A2(
 		$elm$html$Html$div,
@@ -13686,24 +13766,13 @@ var $author$project$Main$view = function (model) {
 											$elm$html$Html$a,
 											_List_fromArray(
 												[
-													$elm$html$Html$Attributes$href('https://github.com/nats-io/gnatsd/')
+													$elm$html$Html$Attributes$href('https://github.com/nats-io/nats-server/')
 												]),
 											_List_fromArray(
 												[
-													$elm$html$Html$text('gnatsd')
+													$elm$html$Html$text('nats-server')
 												])),
-											$elm$html$Html$text(' and a running '),
-											A2(
-											$elm$html$Html$a,
-											_List_fromArray(
-												[
-													$elm$html$Html$Attributes$href('https://github.com/orus-io/nats-websocket-gw')
-												]),
-											_List_fromArray(
-												[
-													$elm$html$Html$text('nats-websocket-gw')
-												])),
-											$elm$html$Html$text(' --no-origin-check')
+											$elm$html$Html$text(' with websockets enabled: nats-server -c server.conf')
 										]));
 							}
 						}()
@@ -13779,6 +13848,28 @@ var $author$project$Main$view = function (model) {
 						_List_fromArray(
 						[
 							A2(
+							$elm$html$Html$h4,
+							_List_Nil,
+							_List_fromArray(
+								[
+									$elm$html$Html$text('Turn ON/OFF')
+								])),
+							A2(
+							$elm$html$Html$button,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('btn btn-primary'),
+									$elm$html$Html$Events$onClick($author$project$Main$SwitchOpened)
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text(
+									model.socketOpened ? 'Turn OFF' : 'Turn ON')
+								]))
+						]),
+						_List_fromArray(
+						[
+							A2(
 							$elm$html$Html$map,
 							$author$project$Main$SubCompMsg,
 							$author$project$SubComp$view(model.subcomp))
@@ -13797,4 +13888,4 @@ _Platform_export({'Main':{'init':$author$project$Main$main(
 			return $elm$json$Json$Decode$succeed(
 				{now: now});
 		},
-		A2($elm$json$Json$Decode$field, 'now', $elm$json$Json$Decode$int)))({"versions":{"elm":"0.19.1"},"types":{"message":"Main.Msg","aliases":{"Nats.Protocol.Message":{"args":["datatype"],"type":"{ subject : String.String, replyTo : String.String, size : Basics.Int, data : datatype }"},"Nats.Msg":{"args":["datatype","msg"],"type":"Nats.Internal.Types.Msg datatype msg"},"Nats.Protocol.ServerInfo":{"args":[],"type":"{ server_id : String.String, version : String.String, go : String.String, host : String.String, port_ : Basics.Int, auth_required : Basics.Bool, max_payload : Basics.Int }"},"Nats.Internal.Ports.Ack":{"args":[],"type":"{ sid : String.String, ack : String.String }"},"Nats.Internal.Ports.Message":{"args":["datatype"],"type":"{ sid : String.String, ack : Maybe.Maybe String.String, message : datatype }"}},"unions":{"Main.Msg":{"args":[],"tags":{"NoOp":[],"NatsMsg":["Nats.Msg String.String Main.Msg"],"SubCompMsg":["SubComp.Msg"],"NatsConnect":["Nats.Protocol.ServerInfo"],"OnSocketEvent":["Nats.Events.SocketEvent"],"Publish":[],"InputText":["String.String"],"SendRequest":[],"RequestError":[],"ReceiveResponse":["String.String"],"HandleRequest":["Nats.Protocol.Message String.String"]}},"Basics.Bool":{"args":[],"tags":{"True":[],"False":[]}},"Basics.Int":{"args":[],"tags":{"Int":[]}},"Nats.Internal.Types.Msg":{"args":["datatype","msg"],"tags":{"OnAck":["Nats.Internal.Ports.Ack"],"OnOpen":["String.String"],"OnClose":["String.String"],"OnError":["{ sid : String.String, message : String.String }"],"OnMessage":["Nats.Internal.Ports.Message datatype"],"OnTime":["Time.Posix"]}},"SubComp.Msg":{"args":[],"tags":{"Subscribe":[],"Unsubscribe":[],"Receive":["Basics.Int","String.String"]}},"Nats.Events.SocketEvent":{"args":[],"tags":{"SocketOpen":["Nats.Protocol.ServerInfo"],"SocketClose":[],"SocketError":["String.String"]}},"String.String":{"args":[],"tags":{"String":[]}},"Maybe.Maybe":{"args":["a"],"tags":{"Just":["a"],"Nothing":[]}},"Time.Posix":{"args":[],"tags":{"Posix":["Basics.Int"]}}}}})}});}(this));
+		A2($elm$json$Json$Decode$field, 'now', $elm$json$Json$Decode$int)))({"versions":{"elm":"0.19.1"},"types":{"message":"Main.Msg","aliases":{"Nats.Protocol.Message":{"args":["datatype"],"type":"{ subject : String.String, replyTo : String.String, size : Basics.Int, data : datatype }"},"Nats.Msg":{"args":["datatype","msg"],"type":"Nats.Internal.Types.Msg datatype msg"},"Nats.Internal.Ports.Ack":{"args":[],"type":"{ sid : String.String, ack : String.String }"},"Nats.Internal.Ports.Message":{"args":["datatype"],"type":"{ sid : String.String, ack : Maybe.Maybe String.String, message : datatype }"},"Nats.Protocol.ServerInfo":{"args":[],"type":"{ server_id : String.String, version : String.String, go : String.String, host : String.String, port_ : Basics.Int, auth_required : Basics.Bool, max_payload : Basics.Int }"}},"unions":{"Main.Msg":{"args":[],"tags":{"NoOp":[],"NatsMsg":["Nats.Msg String.String Main.Msg"],"SubCompMsg":["SubComp.Msg"],"OnSocketEvent":["Nats.Events.SocketEvent"],"Publish":[],"InputText":["String.String"],"SendRequest":[],"RequestError":[],"ReceiveResponse":["String.String"],"SwitchOpened":[],"HandleRequest":["Nats.Protocol.Message String.String"]}},"Basics.Int":{"args":[],"tags":{"Int":[]}},"Nats.Internal.Types.Msg":{"args":["datatype","msg"],"tags":{"OnAck":["Nats.Internal.Ports.Ack"],"OnOpen":["String.String"],"OnClose":["String.String"],"OnError":["{ sid : String.String, message : String.String }"],"OnMessage":["Nats.Internal.Ports.Message datatype"],"OnTime":["Time.Posix"]}},"SubComp.Msg":{"args":[],"tags":{"Subscribe":[],"Unsubscribe":[],"Receive":["Basics.Int","String.String"]}},"Nats.Events.SocketEvent":{"args":[],"tags":{"SocketOpen":["Nats.Protocol.ServerInfo"],"SocketClose":[],"SocketError":["String.String"]}},"String.String":{"args":[],"tags":{"String":[]}},"Basics.Bool":{"args":[],"tags":{"True":[],"False":[]}},"Maybe.Maybe":{"args":["a"],"tags":{"Just":["a"],"Nothing":[]}},"Time.Posix":{"args":[],"tags":{"Posix":["Basics.Int"]}}}}})}});}(this));

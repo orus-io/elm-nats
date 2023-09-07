@@ -239,19 +239,8 @@ updateWithEffects (Types.Config cfg) msg ((State state) as oState) =
             oState
                 |> updateSocket (Types.Config cfg)
                     sid
-                    (\socket ->
-                        case socket.status of
-                            Socket.Closing ->
-                                ( Nothing, [], Cmd.none )
-
-                            _ ->
-                                ( Just <|
-                                    SocketState.setStatus
-                                        (Socket.Error "socket closed")
-                                        socket
-                                , []
-                                , Cmd.none
-                                )
+                    (\_ ->
+                        ( Nothing, [], Cmd.none )
                     )
 
         Types.OnError { sid, message } ->
@@ -454,18 +443,25 @@ toCmd (Types.Config cfg) effect ((State state) as oState) =
 handleSub : Config datatype portdatatype msg -> Sub datatype msg -> State datatype msg -> ( State datatype msg, Cmd msg )
 handleSub (Types.Config cfg) (Sub subList) state =
     let
-        ( State nState, cmd ) =
+        ( State nState, socketIds, cmds ) =
             subList
                 |> List.foldl
-                    (\innerSub ( st, cmdList ) ->
+                    (\innerSub ( st, socketList, cmdList ) ->
                         let
-                            ( newState, newCmd ) =
+                            ( newState, socketId, newCmd ) =
                                 handleSubHelper (Types.Config cfg) innerSub st
                         in
-                        ( newState, newCmd :: cmdList )
+                        ( newState
+                        , case socketId of
+                            Nothing ->
+                                socketList
+
+                            Just id ->
+                                id :: socketList
+                        , newCmd :: cmdList
+                        )
                     )
-                    ( state, [] )
-                |> Tuple.mapSecond Cmd.batch
+                    ( state, [], [] )
 
         ( sockets, opsCmds ) =
             nState.sockets
@@ -492,18 +488,37 @@ handleSub (Types.Config cfg) (Sub subList) state =
                                 )
                     )
                 |> Tuple.mapSecond List.concat
+
+        ( cleanSockets, closeCmds ) =
+            sockets
+                |> SocketStateCollection.toList
+                |> List.partition (\socket -> List.member socket.socket.id socketIds)
+                |> Tuple.mapFirst (List.map (SocketState.setStatus Socket.Closing) >> SocketStateCollection.fromList)
+                |> Tuple.mapSecond
+                    (List.map
+                        (\socket ->
+                            Ports.close socket.socket.id
+                                |> cfg.ports.send
+                                |> Cmd.map cfg.parentMsg
+                        )
+                    )
     in
     ( State
         { nState
-            | sockets = sockets
+            | sockets = cleanSockets
         }
-    , cmd
-        :: opsCmds
+    , cmds
+        ++ opsCmds
+        ++ closeCmds
         |> Cmd.batch
     )
 
 
-handleSubHelper : Config datatype portdatatype msg -> RealSub datatype msg -> State datatype msg -> ( State datatype msg, Cmd msg )
+handleSubHelper :
+    Config datatype portdatatype msg
+    -> RealSub datatype msg
+    -> State datatype msg
+    -> ( State datatype msg, Maybe String, Cmd msg )
 handleSubHelper (Types.Config cfg) sub ((State state) as oState) =
     case sub of
         Connect options ((Types.Socket props) as socket) onEvent ->
@@ -528,6 +543,7 @@ handleSubHelper (Types.Config cfg) sub ((State state) as oState) =
                                         else
                                             Just id
                         }
+                    , Just props.id
                     , cfg.ports.send
                         (Ports.open
                             { sid = props.id
@@ -542,6 +558,7 @@ handleSubHelper (Types.Config cfg) sub ((State state) as oState) =
                 Just _ ->
                     -- TODO if the URL changed, close the socket and re-open
                     ( oState
+                    , Just props.id
                     , Cmd.none
                     )
 
@@ -549,6 +566,7 @@ handleSubHelper (Types.Config cfg) sub ((State state) as oState) =
             case sid |> Maybe.withDefault (state.defaultSocket |> Maybe.withDefault "") of
                 "" ->
                     ( oState
+                    , Nothing
                     , logError (Types.Config cfg) "cannot subscribe: Could not determine the sid"
                     )
 
@@ -565,7 +583,7 @@ handleSubHelper (Types.Config cfg) sub ((State state) as oState) =
                                         )
                                     )
                     in
-                    ( newState, Cmd.none )
+                    ( newState, Nothing, Cmd.none )
 
 
 {-| Update the nats state according to all the Nats.Effect and Nats.Sub gathered

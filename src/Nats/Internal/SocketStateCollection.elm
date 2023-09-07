@@ -2,9 +2,11 @@ module Nats.Internal.SocketStateCollection exposing
     ( SocketStateCollection
     , empty
     , findByID
+    , fromList
     , insert
     , mapWithEffect
     , removeByID
+    , toList
     , update
     )
 
@@ -18,6 +20,16 @@ type SocketStateCollection datatype msg
 empty : SocketStateCollection datatype msg
 empty =
     SocketStateCollection []
+
+
+toList : SocketStateCollection datatype msg -> List (SocketState datatype msg)
+toList (SocketStateCollection list) =
+    list
+
+
+fromList : List (SocketState datatype msg) -> SocketStateCollection datatype msg
+fromList =
+    SocketStateCollection
 
 
 findByID : String -> SocketStateCollection datatype msg -> Maybe (SocketState datatype msg)

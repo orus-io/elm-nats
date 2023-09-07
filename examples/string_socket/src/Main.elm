@@ -48,6 +48,7 @@ natsConfig =
 type alias Model =
     { nats : Nats.State String Msg
     , socket : Nats.Socket.Socket
+    , socketOpened : Bool
     , serverInfo : Maybe Nats.Protocol.ServerInfo
     , subcomp : SubComp.Model
     , inputText : String
@@ -64,6 +65,7 @@ init flags =
     in
     ({ nats = nats
     , socket = Nats.Socket.new "0" "ws://localhost:8087"
+    , socketOpened = True
     , serverInfo = Nothing
     , subcomp = SubComp.init
     , inputText = ""
@@ -93,13 +95,13 @@ type Msg
     = NoOp
     | NatsMsg (Nats.Msg String Msg)
     | SubCompMsg SubComp.Msg
-    | NatsConnect Nats.Protocol.ServerInfo
     | OnSocketEvent Nats.Events.SocketEvent
     | Publish
     | InputText String
     | SendRequest
     | RequestError
     | ReceiveResponse String
+    | SwitchOpened
     | HandleRequest (Nats.Protocol.Message String)
 
 
@@ -116,17 +118,18 @@ receiveResponse result =
 natsSubscriptions : Model -> Nats.Sub String Msg
 natsSubscriptions model =
     Nats.Sub.batch
-    [
-    SubComp.natsSubscriptions model.subcomp
-        |> Nats.Sub.map SubCompMsg
+        [ SubComp.natsSubscriptions model.subcomp
+            |> Nats.Sub.map SubCompMsg
         , Nats.groupSubscribe "say.hello.to.me" "server" HandleRequest
-        , Nats.connect
-        (Nats.Socket.connectOptions "Demo" "0.1"
-                            |> Nats.Socket.withUserPass "test" "test"
-            )
-        model.socket
-        OnSocketEvent
-        
+        , if model.socketOpened then
+            Nats.connect
+                (Nats.Socket.connectOptions "Demo" "0.1"
+                                |> Nats.Socket.withUserPass "test" "test"
+                )
+                model.socket
+                OnSocketEvent
+        else
+            Nats.Sub.none
         ]
 
 
@@ -183,14 +186,6 @@ update msg model =
             , Cmd.map SubCompMsg subcompCmd
             )
 
-        {-
-           NatsConnect info ->
-               ( model
-               , Nats.publish "test.subject" (Debug.toString info)
-               , Cmd.none
-               )
-
-        -}
         HandleRequest message ->
                ( model
                , Nats.publish message.replyTo ("Hello " ++ message.data ++ "!")
@@ -235,8 +230,8 @@ update msg model =
             , Cmd.none
             )
 
-        _ ->
-            ( model
+        SwitchOpened ->
+            ( { model | socketOpened = not model.socketOpened }
             , Nats.Effect.none
             , Cmd.none
             )
@@ -313,12 +308,9 @@ view model =
                     Nothing ->
                         div [ class "alert alert-warning" ]
                             [ text "Problem: No connection established (yet?). This app need a running "
-                            , a [ href "https://github.com/nats-io/gnatsd/" ]
-                                [ text "gnatsd" ]
-                            , text " and a running "
-                            , a [ href "https://github.com/orus-io/nats-websocket-gw" ]
-                                [ text "nats-websocket-gw" ]
-                            , text " --no-origin-check"
+                            , a [ href "https://github.com/nats-io/nats-server/" ]
+                                [ text "nats-server" ]
+                            , text " with websockets enabled: nats-server -c server.conf"
                             ]
               ]
             , [ h4 [] [ text "Publish" ]
@@ -348,6 +340,17 @@ view model =
 
                     Nothing ->
                         text ""
+              ]
+            , [ h4 [] [ text "Turn ON/OFF" ]
+              , button 
+                    [ class "btn btn-primary"
+                    , onClick SwitchOpened
+                    ]
+                    [ text <| if model.socketOpened then
+                        "Turn OFF" 
+                    else
+                        "Turn ON"
+                    ]
               ]
             , [ SubComp.view model.subcomp
                     |> Html.map SubCompMsg
