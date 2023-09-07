@@ -10,7 +10,9 @@ module Nats.Internal.SocketStateCollection exposing
     , update
     )
 
-import Nats.Internal.SocketState exposing (SocketState)
+import Nats.Internal.Ports as Ports
+import Nats.Internal.SocketState as SocketState exposing (SocketState)
+import Nats.Internal.Types exposing (Config)
 
 
 type SocketStateCollection datatype msg
@@ -53,24 +55,6 @@ insert socket (SocketStateCollection list) =
         |> SocketStateCollection
 
 
-update :
-    String
-    -> (SocketState datatype msg -> SocketState datatype msg)
-    -> SocketStateCollection datatype msg
-    -> SocketStateCollection datatype msg
-update sid fn (SocketStateCollection list) =
-    list
-        |> List.map
-            (\socket ->
-                if socket.socket.id == sid then
-                    fn socket
-
-                else
-                    socket
-            )
-        |> SocketStateCollection
-
-
 internalRemove : String -> List (SocketState datatype msg) -> List (SocketState datatype msg)
 internalRemove sid =
     List.filter
@@ -101,3 +85,22 @@ mapWithEffect fn (SocketStateCollection list) =
         ( [], [] )
         list
         |> Tuple.mapFirst SocketStateCollection
+
+
+update :
+    Config datatype portdatatype msg
+    -> String
+    -> SocketState.Msg datatype
+    -> SocketStateCollection datatype msg
+    -> ( SocketStateCollection datatype msg, ( List msg, List (Ports.Command portdatatype) ) )
+update cfg sid msg collection =
+    case findByID sid collection of
+        Just state ->
+            let
+                ( newState, effect ) =
+                    SocketState.update cfg msg state
+            in
+            ( insert newState collection, effect )
+
+        Nothing ->
+            ( collection, ( [], [] ) )

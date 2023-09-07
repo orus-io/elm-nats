@@ -216,123 +216,104 @@ updateSocket _ sid fn ((State state) as oState) =
                     )
 
 
+operationToCmd :
+    Config datatype portdatatype msg
+    -> String
+    -> Protocol.Operation datatype
+    -> Cmd (Msg datatype msg)
+operationToCmd (Types.Config cfg) sid op =
+    { sid = sid
+    , ack =
+        case op of
+            Protocol.CONNECT _ ->
+                Just "CONNECT"
+
+            _ ->
+                Nothing
+    , message =
+        cfg.write op
+    }
+        |> doSend (Types.Config cfg)
+
+
+doUpdateSocket :
+    Config datatype portdatatype msg
+    -> String
+    -> SocketState.Msg datatype
+    -> State datatype msg
+    -> ( State datatype msg, List msg, Cmd (Msg datatype msg) )
+doUpdateSocket ((Types.Config ncfg) as cfg) sid msg (State state) =
+    let
+        ( sockets, ( msgs, ops ) ) =
+            SocketStateCollection.update cfg sid msg state.sockets
+    in
+    ( State
+        { state
+            | sockets = sockets
+        }
+    , msgs
+    , ops
+        |> List.map ncfg.ports.send
+        |> Cmd.batch
+    )
+
+
+doUpdateAllSockets :
+    Config datatype portdatatype msg
+    -> SocketState.Msg datatype
+    -> State datatype msg
+    -> ( State datatype msg, List msg, Cmd (Msg datatype msg) )
+doUpdateAllSockets ((Types.Config ncfg) as cfg) msg (State state) =
+    let
+        ( sockets, effects ) =
+            state.sockets
+                |> SocketStateCollection.mapWithEffect
+                    (SocketState.update cfg msg)
+    in
+    ( State
+        { state
+            | sockets = sockets
+        }
+    , effects
+        |> List.concatMap Tuple.first
+    , effects
+        |> List.concatMap Tuple.second
+        |> List.map ncfg.ports.send
+        |> Cmd.batch
+    )
+
+
 updateWithEffects :
     Config datatype portdatatype msg
     -> Msg datatype msg
     -> State datatype msg
     -> ( State datatype msg, List msg, Cmd (Msg datatype msg) )
-updateWithEffects (Types.Config cfg) msg ((State state) as oState) =
+updateWithEffects cfg msg ((State state) as oState) =
     case msg of
         Types.OnOpen sid ->
-            ( State
-                { state
-                    | sockets =
-                        state.sockets
-                            |> SocketStateCollection.update sid
-                                (SocketState.setStatus Socket.Opened)
-                }
-            , []
-            , Cmd.none
-            )
+            doUpdateSocket cfg sid SocketState.OnOpen oState
 
         Types.OnClose sid ->
-            oState
-                |> updateSocket (Types.Config cfg)
-                    sid
-                    (\_ ->
-                        ( Nothing, [], Cmd.none )
-                    )
+            doUpdateSocket cfg sid SocketState.OnClose oState
 
         Types.OnError { sid, message } ->
-            oState
-                |> updateSocket (Types.Config cfg)
-                    sid
-                    (\socket ->
-                        ( Just <|
-                            SocketState.setStatus
-                                (Socket.Error message)
-                                socket
-                        , []
-                        , Cmd.none
-                        )
-                    )
+            doUpdateSocket cfg sid (SocketState.OnError message) oState
 
         Types.OnMessage { sid, message } ->
-            case SocketStateCollection.findByID sid state.sockets of
-                Nothing ->
-                    ( oState, [], Cmd.none )
-
-                Just socket ->
-                    let
-                        ( socketN, msgs, operations ) =
-                            SocketState.receive (Types.Config cfg)
-                                message
-                                socket
-                    in
-                    ( State
-                        { state
-                            | sockets =
-                                state.sockets
-                                    |> SocketStateCollection.insert socketN
-                        }
-                    , msgs
-                    , operations
-                        |> List.map
-                            (\op ->
-                                { sid = sid
-                                , ack =
-                                    case op of
-                                        Protocol.CONNECT _ ->
-                                            Just "CONNECT"
-
-                                        _ ->
-                                            Nothing
-                                , message =
-                                    cfg.write op
-                                }
-                                    |> doSend (Types.Config cfg)
-                            )
-                        |> Cmd.batch
-                    )
+            doUpdateSocket cfg sid (SocketState.OnMessage message) oState
 
         Types.OnAck { sid, ack } ->
-            updateSocket (Types.Config cfg)
-                sid
-                (\socket ->
-                    case ack of
-                        "CONNECT" ->
-                            ( Just <| SocketState.ackCONNECT socket
-                            , []
-                            , Cmd.none
-                            )
-
-                        _ ->
-                            ( Just socket
-                            , []
-                            , Cmd.none
-                            )
-                )
-                oState
+            doUpdateSocket cfg sid (SocketState.OnAck ack) oState
 
         Types.OnTime time ->
             let
                 msTime : Int
                 msTime =
                     Time.posixToMillis time
-
-                ( sockets, msgs ) =
-                    state.sockets
-                        |> SocketStateCollection.mapWithEffect
-                            (SocketState.handleTimeouts msTime)
             in
-            ( State
-                { state
-                    | time = msTime
-                    , sockets = sockets
-                }
-            , msgs |> List.concat
-            , Cmd.none
-            )
+            doUpdateAllSockets cfg
+                (SocketState.OnTime msTime)
+                (State { state | time = msTime })
 
 
 nextInbox : State datatype msg -> ( String, State datatype msg )
@@ -470,42 +451,49 @@ handleSub (Types.Config cfg) (Sub subList) state =
                         SocketState.finalizeSubscriptions socket
                             |> Tuple.mapSecond
                                 (List.map
-                                    (\op ->
-                                        doSend (Types.Config cfg)
-                                            { sid = socket.socket.id
-                                            , ack =
-                                                case op of
-                                                    Protocol.CONNECT _ ->
-                                                        Just "CONNECT"
-
-                                                    _ ->
-                                                        Nothing
-                                            , message =
-                                                cfg.write op
-                                            }
-                                            |> Cmd.map cfg.parentMsg
+                                    (operationToCmd (Types.Config cfg) socket.socket.id
+                                        >> Cmd.map cfg.parentMsg
                                     )
                                 )
                     )
-                |> Tuple.mapSecond List.concat
+                |> Tuple.mapSecond
+                    List.concat
 
-        ( cleanSockets, closeCmds ) =
+        ( finalSockets, closeCmds ) =
             sockets
                 |> SocketStateCollection.toList
-                |> List.partition (\socket -> List.member socket.socket.id socketIds)
-                |> Tuple.mapFirst (List.map (SocketState.setStatus Socket.Closing) >> SocketStateCollection.fromList)
+                |> List.filter
+                    (\socket ->
+                        socket.status /= Socket.Closed
+                    )
+                |> List.map
+                    (\socket ->
+                        if List.member socket.socket.id socketIds then
+                            ( socket, ( [], [] ) )
+
+                        else
+                            SocketState.update (Types.Config cfg) SocketState.OnClosing socket
+                    )
+                |> List.unzip
+                |> Tuple.mapFirst SocketStateCollection.fromList
                 |> Tuple.mapSecond
-                    (List.map
-                        (\socket ->
-                            Ports.close socket.socket.id
-                                |> cfg.ports.send
-                                |> Cmd.map cfg.parentMsg
-                        )
+                    (List.unzip
+                        >> Tuple.mapBoth
+                            (List.concat
+                                >> List.map (Task.succeed >> Task.perform identity)
+                            )
+                            (List.concat
+                                >> List.map
+                                    (cfg.ports.send
+                                        >> Cmd.map cfg.parentMsg
+                                    )
+                            )
+                        >> (\( a, b ) -> List.append a b)
                     )
     in
     ( State
         { nState
-            | sockets = cleanSockets
+            | sockets = finalSockets
         }
     , cmds
         ++ opsCmds

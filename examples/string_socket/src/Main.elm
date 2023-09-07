@@ -38,7 +38,7 @@ natsConfig =
         { send = natsSend
         , receive = natsReceive
         }
-        |> Nats.Config.withDebug True
+        |> Nats.Config.withDebug False
 
 
 

@@ -1,18 +1,17 @@
 module Nats.Internal.SocketState exposing
-    ( SocketState
-    , ackCONNECT
+    ( Msg(..)
+    , SocketState
     , addRequest
     , addSubscription
     , finalizeSubscriptions
-    , handleTimeouts
     , init
-    , receive
-    , setStatus
+    , update
     )
 
 import Dict exposing (Dict)
 import Nats.Errors exposing (Timeout)
 import Nats.Events as Events exposing (SocketEvent)
+import Nats.Internal.Ports as Ports
 import Nats.Internal.Types as Types exposing (Config(..))
 import Nats.Protocol as Protocol exposing (ConnectOptions)
 import Nats.Socket as Socket
@@ -62,6 +61,16 @@ isRequest sub =
             False
 
 
+type Msg datatype
+    = OnOpen
+    | OnClosing
+    | OnClose
+    | OnError String
+    | OnMessage datatype
+    | OnAck String
+    | OnTime Int
+
+
 type alias SocketState datatype msg =
     { socket : Types.SocketProps
     , connectOptions : ConnectOptions
@@ -75,6 +84,72 @@ type alias SocketState datatype msg =
 
     -- , lastSeen : Maybe Time
     }
+
+
+update :
+    Config datatype portdatatype msg
+    -> Msg datatype
+    -> SocketState datatype msg
+    ->
+        ( SocketState datatype msg
+        , ( List msg
+          , List (Ports.Command portdatatype)
+          )
+        )
+update cfg msg state =
+    case msg of
+        OnOpen ->
+            ( state |> setStatus Socket.Opened, ( [], [] ) )
+
+        OnClosing ->
+            ( state |> setStatus Socket.Closing
+            , ( []
+              , [ Ports.close state.socket.id ]
+              )
+            )
+
+        OnClose ->
+            ( state |> setStatus Socket.Closed
+            , ( [ state.onEvent <| Events.SocketClose
+                ]
+              , []
+              )
+            )
+
+        OnError err ->
+            ( state |> setStatus (Socket.Error err)
+            , ( [ state.onEvent <| Events.SocketError err
+                ]
+              , []
+              )
+            )
+
+        OnMessage message ->
+            receive cfg message state
+
+        OnAck ack ->
+            case ack of
+                "CONNECT" ->
+                    ( ackCONNECT state
+                    , ( case state.serverInfo of
+                            Just info ->
+                                [ state.onEvent <| Events.SocketOpen info ]
+
+                            Nothing ->
+                                []
+                      , []
+                      )
+                    )
+
+                _ ->
+                    ( state
+                    , ( []
+                      , []
+                      )
+                    )
+
+        OnTime time ->
+            handleTimeouts time state
 
 
 setStatus : Socket.Status -> SocketState datatype msg -> SocketState datatype msg
@@ -145,7 +220,9 @@ addSubscriptionHelper subType subject group onMessage state =
             }
 
 
-finalizeSubscriptions : SocketState datatype msg -> ( SocketState datatype msg, List (Protocol.Operation datatype) )
+finalizeSubscriptions :
+    SocketState datatype msg
+    -> ( SocketState datatype msg, List (Protocol.Operation datatype) )
 finalizeSubscriptions state =
     case state.status of
         Socket.Connected ->
@@ -244,7 +321,10 @@ parse (Config cfg) data state =
             )
 
 
-handleTimeouts : Int -> SocketState datatype msg -> ( SocketState datatype msg, List msg )
+handleTimeouts :
+    Int
+    -> SocketState datatype msg
+    -> ( SocketState datatype msg, ( List msg, List (Ports.Command portdatatype) ) )
 handleTimeouts time state =
     let
         ( subs, msgList ) =
@@ -267,11 +347,22 @@ handleTimeouts time state =
                     ( Dict.empty, [] )
     in
     ( { state | nextSubscriptions = subs }
-    , msgList
+    , ( msgList
+      , []
+      )
     )
 
 
-receive : Config datatype portdatatype msg -> datatype -> SocketState datatype msg -> ( SocketState datatype msg, List msg, List (Protocol.Operation datatype) )
+receive :
+    Config datatype portdatatype msg
+    -> datatype
+    -> SocketState datatype msg
+    ->
+        ( SocketState datatype msg
+        , ( List msg
+          , List (Ports.Command portdatatype)
+          )
+        )
 receive cfg data state =
     let
         ( parseState, maybeOperation ) =
@@ -279,10 +370,10 @@ receive cfg data state =
     in
     case maybeOperation of
         Nothing ->
-            ( parseState, [], [] )
+            ( parseState, ( [], [] ) )
 
         Just op ->
-            receiveOperation op parseState
+            receiveOperation cfg op parseState
 
 
 ackCONNECT : SocketState datatype msg -> SocketState datatype msg
@@ -290,29 +381,60 @@ ackCONNECT =
     setStatus Socket.Connected
 
 
-receiveOperation : Protocol.Operation datatype -> SocketState datatype msg -> ( SocketState datatype msg, List msg, List (Protocol.Operation datatype) )
-receiveOperation operation state =
+operationToPortCommand :
+    Config datatype portdatatype msg
+    -> String
+    -> Protocol.Operation datatype
+    -> Ports.Command portdatatype
+operationToPortCommand (Types.Config ncfg) sid op =
+    { sid = sid
+    , ack =
+        case op of
+            Protocol.CONNECT _ ->
+                Just "CONNECT"
+
+            _ ->
+                Nothing
+    , message =
+        op
+            |> ncfg.write
+            |> ncfg.toPortMessage
+    }
+        |> Ports.send
+
+
+receiveOperation :
+    Config datatype portdatatype msg
+    -> Protocol.Operation datatype
+    -> SocketState datatype msg
+    -> ( SocketState datatype msg, ( List msg, List (Ports.Command portdatatype) ) )
+receiveOperation cfg operation state =
     case operation of
         Protocol.INFO serverInfo ->
             ( { state
                 | serverInfo = Just serverInfo
               }
                 |> setStatus Socket.Connecting
-            , [ Events.SocketOpen serverInfo |> state.onEvent ]
-            , [ Protocol.CONNECT state.connectOptions
-              ]
+            , ( [ Events.SocketOpen serverInfo |> state.onEvent ]
+              , [ Protocol.CONNECT state.connectOptions
+                    |> operationToPortCommand cfg state.socket.id
+                ]
+              )
             )
 
         Protocol.PING ->
             ( state
-            , []
-            , [ Protocol.PONG ]
+            , ( []
+              , [ Protocol.PONG
+                    |> operationToPortCommand cfg state.socket.id
+                ]
+              )
             )
 
         Protocol.MSG id message ->
             case getSubscriptionByID id state of
                 Nothing ->
-                    ( state, [], [] )
+                    ( state, ( [], [] ) )
 
                 Just sub ->
                     let
@@ -341,15 +463,16 @@ receiveOperation operation state =
                                 }
                     in
                     ( nextState
-                    , case actualMessage of
-                        Nothing ->
-                            []
+                    , ( case actualMessage of
+                            Nothing ->
+                                []
 
-                        Just msg ->
-                            sub.handlers
-                                |> List.map (\onMessage -> onMessage msg)
-                    , []
+                            Just msg ->
+                                sub.handlers
+                                    |> List.map (\onMessage -> onMessage msg)
+                      , []
+                      )
                     )
 
         _ ->
-            ( state, [], [] )
+            ( state, ( [], [] ) )

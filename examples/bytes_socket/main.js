@@ -12544,31 +12544,18 @@ var $author$project$Nats$subscriptions = F2(
 var $author$project$Main$subscriptions = function (model) {
 	return A2($author$project$Nats$subscriptions, $author$project$Main$natsConfig, model.nats);
 };
-var $author$project$Nats$Socket$Closing = {$: 'Closing'};
-var $author$project$Nats$Internal$Ports$close = function (sid) {
-	return {
-		close: $elm$core$Maybe$Just(sid),
-		open: $elm$core$Maybe$Nothing,
-		send: $elm$core$Maybe$Nothing
-	};
-};
-var $author$project$Nats$Internal$Ports$send = function (msg) {
-	return {
-		close: $elm$core$Maybe$Nothing,
-		open: $elm$core$Maybe$Nothing,
-		send: $elm$core$Maybe$Just(msg)
-	};
-};
-var $author$project$Nats$doSend = F2(
-	function (_v0, message) {
-		var cfg = _v0.a;
-		return cfg.ports.send(
-			$author$project$Nats$Internal$Ports$send(
-				{
-					ack: message.ack,
-					message: cfg.toPortMessage(message.message),
-					sid: message.sid
-				}));
+var $author$project$Nats$Socket$Closed = {$: 'Closed'};
+var $author$project$Nats$Internal$SocketState$OnClosing = {$: 'OnClosing'};
+var $elm$core$List$filter = F2(
+	function (isGood, list) {
+		return A3(
+			$elm$core$List$foldr,
+			F2(
+				function (x, xs) {
+					return isGood(x) ? A2($elm$core$List$cons, x, xs) : xs;
+				}),
+			_List_Nil,
+			list);
 	});
 var $author$project$Nats$Protocol$SUB = F3(
 	function (a, b, c) {
@@ -12588,17 +12575,6 @@ var $elm$core$Dict$filter = F2(
 				}),
 			$elm$core$Dict$empty,
 			dict);
-	});
-var $elm$core$List$filter = F2(
-	function (isGood, list) {
-		return A3(
-			$elm$core$List$foldr,
-			F2(
-				function (x, xs) {
-					return isGood(x) ? A2($elm$core$List$cons, x, xs) : xs;
-				}),
-			_List_Nil,
-			list);
 	});
 var $author$project$Nats$Internal$SocketState$getSubscriptionByID = F2(
 	function (id, state) {
@@ -12941,6 +12917,14 @@ var $author$project$Nats$handleSubHelper = F3(
 			}
 		}
 	});
+var $elm$core$Tuple$mapBoth = F3(
+	function (funcA, funcB, _v0) {
+		var x = _v0.a;
+		var y = _v0.b;
+		return _Utils_Tuple2(
+			funcA(x),
+			funcB(y));
+	});
 var $elm$core$Tuple$mapFirst = F2(
 	function (func, _v0) {
 		var x = _v0.a;
@@ -13009,34 +12993,372 @@ var $elm$core$List$member = F2(
 			},
 			xs);
 	});
-var $elm$core$List$partition = F2(
-	function (pred, list) {
-		var step = F2(
-			function (x, _v0) {
-				var trues = _v0.a;
-				var falses = _v0.b;
-				return pred(x) ? _Utils_Tuple2(
-					A2($elm$core$List$cons, x, trues),
-					falses) : _Utils_Tuple2(
-					trues,
-					A2($elm$core$List$cons, x, falses));
-			});
-		return A3(
-			$elm$core$List$foldr,
-			step,
-			_Utils_Tuple2(_List_Nil, _List_Nil),
-			list);
+var $author$project$Nats$Internal$Ports$send = function (msg) {
+	return {
+		close: $elm$core$Maybe$Nothing,
+		open: $elm$core$Maybe$Nothing,
+		send: $elm$core$Maybe$Just(msg)
+	};
+};
+var $author$project$Nats$doSend = F2(
+	function (_v0, message) {
+		var cfg = _v0.a;
+		return cfg.ports.send(
+			$author$project$Nats$Internal$Ports$send(
+				{
+					ack: message.ack,
+					message: cfg.toPortMessage(message.message),
+					sid: message.sid
+				}));
 	});
+var $author$project$Nats$operationToCmd = F3(
+	function (_v0, sid, op) {
+		var cfg = _v0.a;
+		return A2(
+			$author$project$Nats$doSend,
+			$author$project$Nats$Internal$Types$Config(cfg),
+			{
+				ack: function () {
+					if (op.$ === 'CONNECT') {
+						return $elm$core$Maybe$Just('CONNECT');
+					} else {
+						return $elm$core$Maybe$Nothing;
+					}
+				}(),
+				message: cfg.write(op),
+				sid: sid
+			});
+	});
+var $author$project$Nats$Internal$SocketStateCollection$toList = function (_v0) {
+	var list = _v0.a;
+	return list;
+};
+var $elm$core$List$unzip = function (pairs) {
+	var step = F2(
+		function (_v0, _v1) {
+			var x = _v0.a;
+			var y = _v0.b;
+			var xs = _v1.a;
+			var ys = _v1.b;
+			return _Utils_Tuple2(
+				A2($elm$core$List$cons, x, xs),
+				A2($elm$core$List$cons, y, ys));
+		});
+	return A3(
+		$elm$core$List$foldr,
+		step,
+		_Utils_Tuple2(_List_Nil, _List_Nil),
+		pairs);
+};
+var $author$project$Nats$Socket$Closing = {$: 'Closing'};
+var $author$project$Nats$Socket$Error = function (a) {
+	return {$: 'Error', a: a};
+};
+var $author$project$Nats$Socket$Opened = {$: 'Opened'};
+var $author$project$Nats$Events$SocketClose = {$: 'SocketClose'};
+var $author$project$Nats$Events$SocketError = function (a) {
+	return {$: 'SocketError', a: a};
+};
+var $author$project$Nats$Events$SocketOpen = function (a) {
+	return {$: 'SocketOpen', a: a};
+};
+var $author$project$Nats$Socket$Connected = {$: 'Connected'};
 var $author$project$Nats$Internal$SocketState$setStatus = F2(
 	function (status, state) {
 		return _Utils_update(
 			state,
 			{status: status});
 	});
-var $author$project$Nats$Internal$SocketStateCollection$toList = function (_v0) {
-	var list = _v0.a;
-	return list;
+var $author$project$Nats$Internal$SocketState$ackCONNECT = $author$project$Nats$Internal$SocketState$setStatus($author$project$Nats$Socket$Connected);
+var $author$project$Nats$Internal$Ports$close = function (sid) {
+	return {
+		close: $elm$core$Maybe$Just(sid),
+		open: $elm$core$Maybe$Nothing,
+		send: $elm$core$Maybe$Nothing
+	};
 };
+var $author$project$Nats$Internal$SocketState$Closed = {$: 'Closed'};
+var $author$project$Nats$Internal$SocketState$handleTimeouts = F2(
+	function (time, state) {
+		var _v0 = A3(
+			$elm$core$Dict$foldl,
+			F3(
+				function (key, sub, _v1) {
+					var d = _v1.a;
+					var msg = _v1.b;
+					var _v2 = sub.subType;
+					if (_v2.$ === 'Req') {
+						var onTimeout = _v2.a.onTimeout;
+						var deadline = _v2.a.deadline;
+						return (_Utils_cmp(deadline, time) < 0) ? _Utils_Tuple2(
+							A3(
+								$elm$core$Dict$insert,
+								key,
+								_Utils_update(
+									sub,
+									{subType: $author$project$Nats$Internal$SocketState$Closed}),
+								d),
+							A2(
+								$elm$core$List$cons,
+								onTimeout(
+									$elm$time$Time$millisToPosix(time)),
+								msg)) : _Utils_Tuple2(
+							A3($elm$core$Dict$insert, key, sub, d),
+							msg);
+					} else {
+						return _Utils_Tuple2(
+							A3($elm$core$Dict$insert, key, sub, d),
+							msg);
+					}
+				}),
+			_Utils_Tuple2($elm$core$Dict$empty, _List_Nil),
+			state.nextSubscriptions);
+		var subs = _v0.a;
+		var msgList = _v0.b;
+		return _Utils_Tuple2(
+			_Utils_update(
+				state,
+				{nextSubscriptions: subs}),
+			_Utils_Tuple2(msgList, _List_Nil));
+	});
+var $author$project$Nats$Internal$SocketState$parse = F3(
+	function (_v0, data, state) {
+		var cfg = _v0.a;
+		var _v1 = A2(cfg.parse, data, state.partialOperation);
+		switch (_v1.$) {
+			case 'Operation':
+				var op = _v1.a;
+				return _Utils_Tuple2(
+					_Utils_update(
+						state,
+						{partialOperation: $elm$core$Maybe$Nothing}),
+					$elm$core$Maybe$Just(op));
+			case 'Partial':
+				var op = _v1.a;
+				return _Utils_Tuple2(
+					_Utils_update(
+						state,
+						{
+							partialOperation: $elm$core$Maybe$Just(op)
+						}),
+					$elm$core$Maybe$Nothing);
+			default:
+				var err = _v1.a;
+				return _Utils_Tuple2(
+					_Utils_update(
+						state,
+						{
+							partialOperation: $elm$core$Maybe$Nothing,
+							status: $author$project$Nats$Socket$Error(err)
+						}),
+					$elm$core$Maybe$Nothing);
+		}
+	});
+var $author$project$Nats$Protocol$CONNECT = function (a) {
+	return {$: 'CONNECT', a: a};
+};
+var $author$project$Nats$Socket$Connecting = {$: 'Connecting'};
+var $author$project$Nats$Internal$SocketState$operationToPortCommand = F3(
+	function (_v0, sid, op) {
+		var ncfg = _v0.a;
+		return $author$project$Nats$Internal$Ports$send(
+			{
+				ack: function () {
+					if (op.$ === 'CONNECT') {
+						return $elm$core$Maybe$Just('CONNECT');
+					} else {
+						return $elm$core$Maybe$Nothing;
+					}
+				}(),
+				message: ncfg.toPortMessage(
+					ncfg.write(op)),
+				sid: sid
+			});
+	});
+var $author$project$Nats$Internal$SocketState$receiveOperation = F3(
+	function (cfg, operation, state) {
+		switch (operation.$) {
+			case 'INFO':
+				var serverInfo = operation.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Nats$Internal$SocketState$setStatus,
+						$author$project$Nats$Socket$Connecting,
+						_Utils_update(
+							state,
+							{
+								serverInfo: $elm$core$Maybe$Just(serverInfo)
+							})),
+					_Utils_Tuple2(
+						_List_fromArray(
+							[
+								state.onEvent(
+								$author$project$Nats$Events$SocketOpen(serverInfo))
+							]),
+						_List_fromArray(
+							[
+								A3(
+								$author$project$Nats$Internal$SocketState$operationToPortCommand,
+								cfg,
+								state.socket.id,
+								$author$project$Nats$Protocol$CONNECT(state.connectOptions))
+							])));
+			case 'PING':
+				return _Utils_Tuple2(
+					state,
+					_Utils_Tuple2(
+						_List_Nil,
+						_List_fromArray(
+							[
+								A3($author$project$Nats$Internal$SocketState$operationToPortCommand, cfg, state.socket.id, $author$project$Nats$Protocol$PONG)
+							])));
+			case 'MSG':
+				var id = operation.a;
+				var message = operation.b;
+				var _v1 = A2($author$project$Nats$Internal$SocketState$getSubscriptionByID, id, state);
+				if (_v1.$ === 'Nothing') {
+					return _Utils_Tuple2(
+						state,
+						_Utils_Tuple2(_List_Nil, _List_Nil));
+				} else {
+					var sub = _v1.a;
+					var _v2 = function () {
+						var _v3 = sub.subType;
+						switch (_v3.$) {
+							case 'Req':
+								var onMessage = _v3.a.onMessage;
+								return onMessage(message);
+							case 'Closed':
+								return _Utils_Tuple2($elm$core$Maybe$Nothing, false);
+							default:
+								return _Utils_Tuple2(
+									$elm$core$Maybe$Just(message),
+									true);
+						}
+					}();
+					var actualMessage = _v2.a;
+					var _continue = _v2.b;
+					var nextState = _continue ? state : _Utils_update(
+						state,
+						{
+							nextSubscriptions: A3(
+								$elm$core$Dict$insert,
+								_Utils_Tuple2(sub.subject, sub.group),
+								_Utils_update(
+									sub,
+									{subType: $author$project$Nats$Internal$SocketState$Closed}),
+								state.nextSubscriptions)
+						});
+					return _Utils_Tuple2(
+						nextState,
+						_Utils_Tuple2(
+							function () {
+								if (actualMessage.$ === 'Nothing') {
+									return _List_Nil;
+								} else {
+									var msg = actualMessage.a;
+									return A2(
+										$elm$core$List$map,
+										function (onMessage) {
+											return onMessage(msg);
+										},
+										sub.handlers);
+								}
+							}(),
+							_List_Nil));
+				}
+			default:
+				return _Utils_Tuple2(
+					state,
+					_Utils_Tuple2(_List_Nil, _List_Nil));
+		}
+	});
+var $author$project$Nats$Internal$SocketState$receive = F3(
+	function (cfg, data, state) {
+		var _v0 = A3($author$project$Nats$Internal$SocketState$parse, cfg, data, state);
+		var parseState = _v0.a;
+		var maybeOperation = _v0.b;
+		if (maybeOperation.$ === 'Nothing') {
+			return _Utils_Tuple2(
+				parseState,
+				_Utils_Tuple2(_List_Nil, _List_Nil));
+		} else {
+			var op = maybeOperation.a;
+			return A3($author$project$Nats$Internal$SocketState$receiveOperation, cfg, op, parseState);
+		}
+	});
+var $author$project$Nats$Internal$SocketState$update = F3(
+	function (cfg, msg, state) {
+		switch (msg.$) {
+			case 'OnOpen':
+				return _Utils_Tuple2(
+					A2($author$project$Nats$Internal$SocketState$setStatus, $author$project$Nats$Socket$Opened, state),
+					_Utils_Tuple2(_List_Nil, _List_Nil));
+			case 'OnClosing':
+				return _Utils_Tuple2(
+					A2($author$project$Nats$Internal$SocketState$setStatus, $author$project$Nats$Socket$Closing, state),
+					_Utils_Tuple2(
+						_List_Nil,
+						_List_fromArray(
+							[
+								$author$project$Nats$Internal$Ports$close(state.socket.id)
+							])));
+			case 'OnClose':
+				return _Utils_Tuple2(
+					A2($author$project$Nats$Internal$SocketState$setStatus, $author$project$Nats$Socket$Closed, state),
+					_Utils_Tuple2(
+						_List_fromArray(
+							[
+								state.onEvent($author$project$Nats$Events$SocketClose)
+							]),
+						_List_Nil));
+			case 'OnError':
+				var err = msg.a;
+				return _Utils_Tuple2(
+					A2(
+						$author$project$Nats$Internal$SocketState$setStatus,
+						$author$project$Nats$Socket$Error(err),
+						state),
+					_Utils_Tuple2(
+						_List_fromArray(
+							[
+								state.onEvent(
+								$author$project$Nats$Events$SocketError(err))
+							]),
+						_List_Nil));
+			case 'OnMessage':
+				var message = msg.a;
+				return A3($author$project$Nats$Internal$SocketState$receive, cfg, message, state);
+			case 'OnAck':
+				var ack = msg.a;
+				if (ack === 'CONNECT') {
+					return _Utils_Tuple2(
+						$author$project$Nats$Internal$SocketState$ackCONNECT(state),
+						_Utils_Tuple2(
+							function () {
+								var _v2 = state.serverInfo;
+								if (_v2.$ === 'Just') {
+									var info = _v2.a;
+									return _List_fromArray(
+										[
+											state.onEvent(
+											$author$project$Nats$Events$SocketOpen(info))
+										]);
+								} else {
+									return _List_Nil;
+								}
+							}(),
+							_List_Nil));
+				} else {
+					return _Utils_Tuple2(
+						state,
+						_Utils_Tuple2(_List_Nil, _List_Nil));
+				}
+			default:
+				var time = msg.a;
+				return A2($author$project$Nats$Internal$SocketState$handleTimeouts, time, state);
+		}
+	});
 var $author$project$Nats$handleSub = F3(
 	function (_v0, _v1, state) {
 		var cfg = _v0.a;
@@ -13082,60 +13404,76 @@ var $author$project$Nats$handleSub = F3(
 					return A2(
 						$elm$core$Tuple$mapSecond,
 						$elm$core$List$map(
-							function (op) {
-								return A2(
-									$elm$core$Platform$Cmd$map,
-									cfg.parentMsg,
-									A2(
-										$author$project$Nats$doSend,
-										$author$project$Nats$Internal$Types$Config(cfg),
-										{
-											ack: function () {
-												if (op.$ === 'CONNECT') {
-													return $elm$core$Maybe$Just('CONNECT');
-												} else {
-													return $elm$core$Maybe$Nothing;
-												}
-											}(),
-											message: cfg.write(op),
-											sid: socket.socket.id
-										}));
-							}),
+							A2(
+								$elm$core$Basics$composeR,
+								A2(
+									$author$project$Nats$operationToCmd,
+									$author$project$Nats$Internal$Types$Config(cfg),
+									socket.socket.id),
+								$elm$core$Platform$Cmd$map(cfg.parentMsg))),
 						$author$project$Nats$Internal$SocketState$finalizeSubscriptions(socket));
 				},
 				nState.sockets));
 		var sockets = _v6.a;
 		var opsCmds = _v6.b;
-		var _v8 = A2(
+		var _v7 = A2(
 			$elm$core$Tuple$mapSecond,
-			$elm$core$List$map(
-				function (socket) {
-					return A2(
-						$elm$core$Platform$Cmd$map,
-						cfg.parentMsg,
-						cfg.ports.send(
-							$author$project$Nats$Internal$Ports$close(socket.socket.id)));
-				}),
 			A2(
-				$elm$core$Tuple$mapFirst,
+				$elm$core$Basics$composeR,
+				$elm$core$List$unzip,
 				A2(
 					$elm$core$Basics$composeR,
-					$elm$core$List$map(
-						$author$project$Nats$Internal$SocketState$setStatus($author$project$Nats$Socket$Closing)),
-					$author$project$Nats$Internal$SocketStateCollection$fromList),
-				A2(
-					$elm$core$List$partition,
-					function (socket) {
-						return A2($elm$core$List$member, socket.socket.id, socketIds);
-					},
-					$author$project$Nats$Internal$SocketStateCollection$toList(sockets))));
-		var cleanSockets = _v8.a;
-		var closeCmds = _v8.b;
+					A2(
+						$elm$core$Tuple$mapBoth,
+						A2(
+							$elm$core$Basics$composeR,
+							$elm$core$List$concat,
+							$elm$core$List$map(
+								A2(
+									$elm$core$Basics$composeR,
+									$elm$core$Task$succeed,
+									$elm$core$Task$perform($elm$core$Basics$identity)))),
+						A2(
+							$elm$core$Basics$composeR,
+							$elm$core$List$concat,
+							$elm$core$List$map(
+								A2(
+									$elm$core$Basics$composeR,
+									cfg.ports.send,
+									$elm$core$Platform$Cmd$map(cfg.parentMsg))))),
+					function (_v8) {
+						var a = _v8.a;
+						var b = _v8.b;
+						return A2($elm$core$List$append, a, b);
+					})),
+			A2(
+				$elm$core$Tuple$mapFirst,
+				$author$project$Nats$Internal$SocketStateCollection$fromList,
+				$elm$core$List$unzip(
+					A2(
+						$elm$core$List$map,
+						function (socket) {
+							return A2($elm$core$List$member, socket.socket.id, socketIds) ? _Utils_Tuple2(
+								socket,
+								_Utils_Tuple2(_List_Nil, _List_Nil)) : A3(
+								$author$project$Nats$Internal$SocketState$update,
+								$author$project$Nats$Internal$Types$Config(cfg),
+								$author$project$Nats$Internal$SocketState$OnClosing,
+								socket);
+						},
+						A2(
+							$elm$core$List$filter,
+							function (socket) {
+								return !_Utils_eq(socket.status, $author$project$Nats$Socket$Closed);
+							},
+							$author$project$Nats$Internal$SocketStateCollection$toList(sockets))))));
+		var finalSockets = _v7.a;
+		var closeCmds = _v7.b;
 		return _Utils_Tuple2(
 			$author$project$Nats$State(
 				_Utils_update(
 					nState,
-					{sockets: cleanSockets})),
+					{sockets: finalSockets})),
 			$elm$core$Platform$Cmd$batch(
 				_Utils_ap(
 					cmds,
@@ -13600,335 +13938,125 @@ var $author$project$Nats$request = F3(
 		return $author$project$Nats$Internal$Types$Request(
 			{message: message, onResponse: onResponse, sid: $elm$core$Maybe$Nothing, subject: subject, timeout: $elm$core$Maybe$Nothing});
 	});
-var $author$project$Nats$Socket$Error = function (a) {
-	return {$: 'Error', a: a};
+var $author$project$Nats$Internal$SocketState$OnAck = function (a) {
+	return {$: 'OnAck', a: a};
 };
-var $author$project$Nats$Socket$Opened = {$: 'Opened'};
-var $author$project$Nats$Socket$Connected = {$: 'Connected'};
-var $author$project$Nats$Internal$SocketState$ackCONNECT = $author$project$Nats$Internal$SocketState$setStatus($author$project$Nats$Socket$Connected);
-var $author$project$Nats$Internal$SocketState$Closed = {$: 'Closed'};
-var $author$project$Nats$Internal$SocketState$handleTimeouts = F2(
-	function (time, state) {
-		var _v0 = A3(
-			$elm$core$Dict$foldl,
-			F3(
-				function (key, sub, _v1) {
-					var d = _v1.a;
-					var msg = _v1.b;
-					var _v2 = sub.subType;
-					if (_v2.$ === 'Req') {
-						var onTimeout = _v2.a.onTimeout;
-						var deadline = _v2.a.deadline;
-						return (_Utils_cmp(deadline, time) < 0) ? _Utils_Tuple2(
-							A3(
-								$elm$core$Dict$insert,
-								key,
-								_Utils_update(
-									sub,
-									{subType: $author$project$Nats$Internal$SocketState$Closed}),
-								d),
-							A2(
-								$elm$core$List$cons,
-								onTimeout(
-									$elm$time$Time$millisToPosix(time)),
-								msg)) : _Utils_Tuple2(
-							A3($elm$core$Dict$insert, key, sub, d),
-							msg);
-					} else {
-						return _Utils_Tuple2(
-							A3($elm$core$Dict$insert, key, sub, d),
-							msg);
-					}
-				}),
-			_Utils_Tuple2($elm$core$Dict$empty, _List_Nil),
-			state.nextSubscriptions);
-		var subs = _v0.a;
-		var msgList = _v0.b;
-		return _Utils_Tuple2(
-			_Utils_update(
-				state,
-				{nextSubscriptions: subs}),
-			msgList);
-	});
-var $author$project$Nats$Internal$SocketState$parse = F3(
-	function (_v0, data, state) {
-		var cfg = _v0.a;
-		var _v1 = A2(cfg.parse, data, state.partialOperation);
-		switch (_v1.$) {
-			case 'Operation':
-				var op = _v1.a;
-				return _Utils_Tuple2(
-					_Utils_update(
-						state,
-						{partialOperation: $elm$core$Maybe$Nothing}),
-					$elm$core$Maybe$Just(op));
-			case 'Partial':
-				var op = _v1.a;
-				return _Utils_Tuple2(
-					_Utils_update(
-						state,
-						{
-							partialOperation: $elm$core$Maybe$Just(op)
-						}),
-					$elm$core$Maybe$Nothing);
-			default:
-				var err = _v1.a;
-				return _Utils_Tuple2(
-					_Utils_update(
-						state,
-						{
-							partialOperation: $elm$core$Maybe$Nothing,
-							status: $author$project$Nats$Socket$Error(err)
-						}),
-					$elm$core$Maybe$Nothing);
-		}
-	});
-var $author$project$Nats$Protocol$CONNECT = function (a) {
-	return {$: 'CONNECT', a: a};
+var $author$project$Nats$Internal$SocketState$OnClose = {$: 'OnClose'};
+var $author$project$Nats$Internal$SocketState$OnError = function (a) {
+	return {$: 'OnError', a: a};
 };
-var $author$project$Nats$Socket$Connecting = {$: 'Connecting'};
-var $author$project$Nats$Events$SocketOpen = function (a) {
-	return {$: 'SocketOpen', a: a};
+var $author$project$Nats$Internal$SocketState$OnMessage = function (a) {
+	return {$: 'OnMessage', a: a};
 };
-var $author$project$Nats$Internal$SocketState$receiveOperation = F2(
-	function (operation, state) {
-		switch (operation.$) {
-			case 'INFO':
-				var serverInfo = operation.a;
-				return _Utils_Tuple3(
-					A2(
-						$author$project$Nats$Internal$SocketState$setStatus,
-						$author$project$Nats$Socket$Connecting,
-						_Utils_update(
-							state,
-							{
-								serverInfo: $elm$core$Maybe$Just(serverInfo)
-							})),
-					_List_fromArray(
-						[
-							state.onEvent(
-							$author$project$Nats$Events$SocketOpen(serverInfo))
-						]),
-					_List_fromArray(
-						[
-							$author$project$Nats$Protocol$CONNECT(state.connectOptions)
-						]));
-			case 'PING':
-				return _Utils_Tuple3(
+var $author$project$Nats$Internal$SocketState$OnOpen = {$: 'OnOpen'};
+var $author$project$Nats$Internal$SocketState$OnTime = function (a) {
+	return {$: 'OnTime', a: a};
+};
+var $author$project$Nats$doUpdateAllSockets = F3(
+	function (cfg, msg, _v0) {
+		var ncfg = cfg.a;
+		var state = _v0.a;
+		var _v1 = A2(
+			$author$project$Nats$Internal$SocketStateCollection$mapWithEffect,
+			A2($author$project$Nats$Internal$SocketState$update, cfg, msg),
+			state.sockets);
+		var sockets = _v1.a;
+		var effects = _v1.b;
+		return _Utils_Tuple3(
+			$author$project$Nats$State(
+				_Utils_update(
 					state,
-					_List_Nil,
-					_List_fromArray(
-						[$author$project$Nats$Protocol$PONG]));
-			case 'MSG':
-				var id = operation.a;
-				var message = operation.b;
-				var _v1 = A2($author$project$Nats$Internal$SocketState$getSubscriptionByID, id, state);
-				if (_v1.$ === 'Nothing') {
-					return _Utils_Tuple3(state, _List_Nil, _List_Nil);
-				} else {
-					var sub = _v1.a;
-					var _v2 = function () {
-						var _v3 = sub.subType;
-						switch (_v3.$) {
-							case 'Req':
-								var onMessage = _v3.a.onMessage;
-								return onMessage(message);
-							case 'Closed':
-								return _Utils_Tuple2($elm$core$Maybe$Nothing, false);
-							default:
-								return _Utils_Tuple2(
-									$elm$core$Maybe$Just(message),
-									true);
-						}
-					}();
-					var actualMessage = _v2.a;
-					var _continue = _v2.b;
-					var nextState = _continue ? state : _Utils_update(
-						state,
-						{
-							nextSubscriptions: A3(
-								$elm$core$Dict$insert,
-								_Utils_Tuple2(sub.subject, sub.group),
-								_Utils_update(
-									sub,
-									{subType: $author$project$Nats$Internal$SocketState$Closed}),
-								state.nextSubscriptions)
-						});
-					return _Utils_Tuple3(
-						nextState,
-						function () {
-							if (actualMessage.$ === 'Nothing') {
-								return _List_Nil;
-							} else {
-								var msg = actualMessage.a;
-								return A2(
-									$elm$core$List$map,
-									function (onMessage) {
-										return onMessage(msg);
-									},
-									sub.handlers);
-							}
-						}(),
-						_List_Nil);
-				}
-			default:
-				return _Utils_Tuple3(state, _List_Nil, _List_Nil);
-		}
+					{sockets: sockets})),
+			A2($elm$core$List$concatMap, $elm$core$Tuple$first, effects),
+			$elm$core$Platform$Cmd$batch(
+				A2(
+					$elm$core$List$map,
+					ncfg.ports.send,
+					A2($elm$core$List$concatMap, $elm$core$Tuple$second, effects))));
 	});
-var $author$project$Nats$Internal$SocketState$receive = F3(
-	function (cfg, data, state) {
-		var _v0 = A3($author$project$Nats$Internal$SocketState$parse, cfg, data, state);
-		var parseState = _v0.a;
-		var maybeOperation = _v0.b;
-		if (maybeOperation.$ === 'Nothing') {
-			return _Utils_Tuple3(parseState, _List_Nil, _List_Nil);
+var $author$project$Nats$Internal$SocketStateCollection$update = F4(
+	function (cfg, sid, msg, collection) {
+		var _v0 = A2($author$project$Nats$Internal$SocketStateCollection$findByID, sid, collection);
+		if (_v0.$ === 'Just') {
+			var state = _v0.a;
+			var _v1 = A3($author$project$Nats$Internal$SocketState$update, cfg, msg, state);
+			var newState = _v1.a;
+			var effect = _v1.b;
+			return _Utils_Tuple2(
+				A2($author$project$Nats$Internal$SocketStateCollection$insert, newState, collection),
+				effect);
 		} else {
-			var op = maybeOperation.a;
-			return A2($author$project$Nats$Internal$SocketState$receiveOperation, op, parseState);
+			return _Utils_Tuple2(
+				collection,
+				_Utils_Tuple2(_List_Nil, _List_Nil));
 		}
 	});
-var $author$project$Nats$Internal$SocketStateCollection$update = F3(
-	function (sid, fn, _v0) {
-		var list = _v0.a;
-		return $author$project$Nats$Internal$SocketStateCollection$SocketStateCollection(
-			A2(
-				$elm$core$List$map,
-				function (socket) {
-					return _Utils_eq(socket.socket.id, sid) ? fn(socket) : socket;
-				},
-				list));
+var $author$project$Nats$doUpdateSocket = F4(
+	function (cfg, sid, msg, _v0) {
+		var ncfg = cfg.a;
+		var state = _v0.a;
+		var _v1 = A4($author$project$Nats$Internal$SocketStateCollection$update, cfg, sid, msg, state.sockets);
+		var sockets = _v1.a;
+		var _v2 = _v1.b;
+		var msgs = _v2.a;
+		var ops = _v2.b;
+		return _Utils_Tuple3(
+			$author$project$Nats$State(
+				_Utils_update(
+					state,
+					{sockets: sockets})),
+			msgs,
+			$elm$core$Platform$Cmd$batch(
+				A2($elm$core$List$map, ncfg.ports.send, ops)));
 	});
 var $author$project$Nats$updateWithEffects = F3(
-	function (_v0, msg, oState) {
-		var cfg = _v0.a;
+	function (cfg, msg, oState) {
 		var state = oState.a;
 		switch (msg.$) {
 			case 'OnOpen':
 				var sid = msg.a;
-				return _Utils_Tuple3(
-					$author$project$Nats$State(
-						_Utils_update(
-							state,
-							{
-								sockets: A3(
-									$author$project$Nats$Internal$SocketStateCollection$update,
-									sid,
-									$author$project$Nats$Internal$SocketState$setStatus($author$project$Nats$Socket$Opened),
-									state.sockets)
-							})),
-					_List_Nil,
-					$elm$core$Platform$Cmd$none);
+				return A4($author$project$Nats$doUpdateSocket, cfg, sid, $author$project$Nats$Internal$SocketState$OnOpen, oState);
 			case 'OnClose':
 				var sid = msg.a;
-				return A4(
-					$author$project$Nats$updateSocket,
-					$author$project$Nats$Internal$Types$Config(cfg),
-					sid,
-					function (_v2) {
-						return _Utils_Tuple3($elm$core$Maybe$Nothing, _List_Nil, $elm$core$Platform$Cmd$none);
-					},
-					oState);
+				return A4($author$project$Nats$doUpdateSocket, cfg, sid, $author$project$Nats$Internal$SocketState$OnClose, oState);
 			case 'OnError':
 				var message = msg.a.message;
 				var sid = msg.a.sid;
 				return A4(
-					$author$project$Nats$updateSocket,
-					$author$project$Nats$Internal$Types$Config(cfg),
+					$author$project$Nats$doUpdateSocket,
+					cfg,
 					sid,
-					function (socket) {
-						return _Utils_Tuple3(
-							$elm$core$Maybe$Just(
-								A2(
-									$author$project$Nats$Internal$SocketState$setStatus,
-									$author$project$Nats$Socket$Error(message),
-									socket)),
-							_List_Nil,
-							$elm$core$Platform$Cmd$none);
-					},
+					$author$project$Nats$Internal$SocketState$OnError(message),
 					oState);
 			case 'OnMessage':
 				var message = msg.a.message;
 				var sid = msg.a.sid;
-				var _v3 = A2($author$project$Nats$Internal$SocketStateCollection$findByID, sid, state.sockets);
-				if (_v3.$ === 'Nothing') {
-					return _Utils_Tuple3(oState, _List_Nil, $elm$core$Platform$Cmd$none);
-				} else {
-					var socket = _v3.a;
-					var _v4 = A3(
-						$author$project$Nats$Internal$SocketState$receive,
-						$author$project$Nats$Internal$Types$Config(cfg),
-						message,
-						socket);
-					var socketN = _v4.a;
-					var msgs = _v4.b;
-					var operations = _v4.c;
-					return _Utils_Tuple3(
-						$author$project$Nats$State(
-							_Utils_update(
-								state,
-								{
-									sockets: A2($author$project$Nats$Internal$SocketStateCollection$insert, socketN, state.sockets)
-								})),
-						msgs,
-						$elm$core$Platform$Cmd$batch(
-							A2(
-								$elm$core$List$map,
-								function (op) {
-									return A2(
-										$author$project$Nats$doSend,
-										$author$project$Nats$Internal$Types$Config(cfg),
-										{
-											ack: function () {
-												if (op.$ === 'CONNECT') {
-													return $elm$core$Maybe$Just('CONNECT');
-												} else {
-													return $elm$core$Maybe$Nothing;
-												}
-											}(),
-											message: cfg.write(op),
-											sid: sid
-										});
-								},
-								operations)));
-				}
+				return A4(
+					$author$project$Nats$doUpdateSocket,
+					cfg,
+					sid,
+					$author$project$Nats$Internal$SocketState$OnMessage(message),
+					oState);
 			case 'OnAck':
 				var ack = msg.a.ack;
 				var sid = msg.a.sid;
 				return A4(
-					$author$project$Nats$updateSocket,
-					$author$project$Nats$Internal$Types$Config(cfg),
+					$author$project$Nats$doUpdateSocket,
+					cfg,
 					sid,
-					function (socket) {
-						if (ack === 'CONNECT') {
-							return _Utils_Tuple3(
-								$elm$core$Maybe$Just(
-									$author$project$Nats$Internal$SocketState$ackCONNECT(socket)),
-								_List_Nil,
-								$elm$core$Platform$Cmd$none);
-						} else {
-							return _Utils_Tuple3(
-								$elm$core$Maybe$Just(socket),
-								_List_Nil,
-								$elm$core$Platform$Cmd$none);
-						}
-					},
+					$author$project$Nats$Internal$SocketState$OnAck(ack),
 					oState);
 			default:
 				var time = msg.a;
 				var msTime = $elm$time$Time$posixToMillis(time);
-				var _v7 = A2(
-					$author$project$Nats$Internal$SocketStateCollection$mapWithEffect,
-					$author$project$Nats$Internal$SocketState$handleTimeouts(msTime),
-					state.sockets);
-				var sockets = _v7.a;
-				var msgs = _v7.b;
-				return _Utils_Tuple3(
+				return A3(
+					$author$project$Nats$doUpdateAllSockets,
+					cfg,
+					$author$project$Nats$Internal$SocketState$OnTime(msTime),
 					$author$project$Nats$State(
 						_Utils_update(
 							state,
-							{sockets: sockets, time: msTime})),
-					$elm$core$List$concat(msgs),
-					$elm$core$Platform$Cmd$none);
+							{time: msTime})));
 		}
 	});
 var $author$project$Nats$update = F3(
@@ -14166,6 +14294,24 @@ var $author$project$Main$panel = function (body) {
 				body)
 			]));
 };
+var $elm$core$List$partition = F2(
+	function (pred, list) {
+		var step = F2(
+			function (x, _v0) {
+				var trues = _v0.a;
+				var falses = _v0.b;
+				return pred(x) ? _Utils_Tuple2(
+					A2($elm$core$List$cons, x, trues),
+					falses) : _Utils_Tuple2(
+					trues,
+					A2($elm$core$List$cons, x, falses));
+			});
+		return A3(
+			$elm$core$List$foldr,
+			step,
+			_Utils_Tuple2(_List_Nil, _List_Nil),
+			list);
+	});
 var $author$project$Main$scaffolding = function (boxes) {
 	return A2(
 		$elm$html$Html$div,
