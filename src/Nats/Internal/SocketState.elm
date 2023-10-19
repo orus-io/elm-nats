@@ -1,6 +1,7 @@
 module Nats.Internal.SocketState exposing
     ( Msg(..)
     , SocketState
+    , SubType(..)
     , addRequest
     , addSubscription
     , finalizeSubscriptions
@@ -24,7 +25,7 @@ init options onEvent (Types.Socket socket) =
     , connectOptions = options
     , onEvent = onEvent
     , status = Socket.Undefined
-    , partialOperation = Nothing
+    , parseState = Protocol.initialParseState
     , serverInfo = Nothing
     , lastSubID = 0
     , activeSubscriptions = []
@@ -34,21 +35,50 @@ init options onEvent (Types.Socket socket) =
 
 type SubType datatype msg
     = Closed
-    | Sub
+    | Sub (List (Protocol.Message datatype -> msg))
     | Req
-        { deadline : Int
+        { marker : Maybe String
+        , subject : String
+        , deadline : Int
         , onTimeout : Time.Posix -> msg
-        , onMessage : Protocol.Message datatype -> ( Maybe (Protocol.Message datatype), Bool )
+        , onMessage : Protocol.Message datatype -> ( Maybe msg, Bool )
         }
+
+
+subTypeKey : SubType datatype msg -> String
+subTypeKey subType =
+    case subType of
+        Closed ->
+            "closed"
+
+        Sub _ ->
+            "sub"
+
+        Req _ ->
+            "req"
+
+
+subTypeMerge : SubType datatype msg -> SubType datatype msg -> SubType datatype msg
+subTypeMerge sub1 sub2 =
+    case ( sub1, sub2 ) of
+        ( Sub list1, Sub list2 ) ->
+            Sub <| list1 ++ list2
+
+        _ ->
+            sub1
 
 
 type alias Subscription datatype msg =
     { id : String
     , subject : String
     , group : String
-    , handlers : List (Protocol.Message datatype -> msg)
     , subType : SubType datatype msg
     }
+
+
+subscriptionKey : Subscription datatype msg -> ( String, String, String )
+subscriptionKey sub =
+    ( subTypeKey sub.subType, sub.subject, sub.group )
 
 
 isRequest : Subscription datatype msg -> Bool
@@ -76,11 +106,11 @@ type alias SocketState datatype msg =
     , connectOptions : ConnectOptions
     , onEvent : SocketEvent -> msg
     , status : Socket.Status
-    , partialOperation : Maybe (Protocol.PartialOperation datatype)
+    , parseState : Protocol.ParseState datatype
     , serverInfo : Maybe Protocol.ServerInfo
     , lastSubID : Int
     , activeSubscriptions : List (Subscription datatype msg)
-    , nextSubscriptions : Dict ( String, String ) (Subscription datatype msg)
+    , nextSubscriptions : Dict ( String, String, String ) (Subscription datatype msg)
 
     -- , lastSeen : Maybe Time
     }
@@ -179,20 +209,29 @@ nextID state =
 
 
 addSubscription : String -> String -> (Protocol.Message datatype -> msg) -> SocketState datatype msg -> SocketState datatype msg
-addSubscription =
-    addSubscriptionHelper Sub
+addSubscription subject group onMessage =
+    addSubscriptionHelper (Sub [ onMessage ]) subject group
 
 
-addSubscriptionHelper : SubType datatype msg -> String -> String -> (Protocol.Message datatype -> msg) -> SocketState datatype msg -> SocketState datatype msg
-addSubscriptionHelper subType subject group onMessage state =
-    case Dict.get ( subject, group ) state.nextSubscriptions of
+addSubscriptionHelper :
+    SubType datatype msg
+    -> String
+    -> String
+    -> SocketState datatype msg
+    -> SocketState datatype msg
+addSubscriptionHelper subType subject group state =
+    let
+        key =
+            ( subTypeKey subType, subject, group )
+    in
+    case Dict.get key state.nextSubscriptions of
         Just sub ->
             { state
                 | nextSubscriptions =
                     state.nextSubscriptions
-                        |> Dict.insert ( subject, group )
+                        |> Dict.insert key
                             { sub
-                                | handlers = onMessage :: sub.handlers
+                                | subType = subTypeMerge sub.subType subType
                             }
             }
 
@@ -209,11 +248,10 @@ addSubscriptionHelper subType subject group onMessage state =
             { state
                 | nextSubscriptions =
                     state.nextSubscriptions
-                        |> Dict.insert ( subject, group )
+                        |> Dict.insert key
                             { id = subID
                             , subject = subject
                             , group = group
-                            , handlers = [ onMessage ]
                             , subType = subType
                             }
                 , lastSubID = lastSubID
@@ -273,25 +311,28 @@ finalizeSubscriptions state =
 addRequest :
     Config datatype portdatatype msg
     ->
-        { subject : String
+        { marker : Maybe String
+        , subject : String
         , inbox : String
         , message : datatype
         , deadline : Int
-        , onResponse : Result Timeout datatype -> msg
+        , onTimeout : Timeout -> msg
+        , onResponse : Protocol.Message datatype -> ( Maybe msg, Bool )
         }
     -> SocketState datatype msg
     -> ( SocketState datatype msg, List (Protocol.Operation datatype) )
 addRequest (Config cfg) req state =
     ( addSubscriptionHelper
         (Req
-            { deadline = req.deadline
-            , onTimeout = Err >> req.onResponse
-            , onMessage = \m -> ( Just m, False )
+            { marker = req.marker
+            , subject = req.subject
+            , deadline = req.deadline
+            , onTimeout = req.onTimeout
+            , onMessage = req.onResponse
             }
         )
         req.inbox
         ""
-        (.data >> Ok >> req.onResponse)
         state
     , [ Protocol.PUB
             { subject = req.subject
@@ -303,21 +344,18 @@ addRequest (Config cfg) req state =
     )
 
 
-parse : Config datatype portdatatype msg -> datatype -> SocketState datatype msg -> ( SocketState datatype msg, Maybe (Protocol.Operation datatype) )
+parse : Config datatype portdatatype msg -> datatype -> SocketState datatype msg -> ( SocketState datatype msg, List (Protocol.Operation datatype) )
 parse (Config cfg) data state =
-    case cfg.parse data state.partialOperation of
-        Protocol.Operation op ->
-            ( { state | partialOperation = Nothing }, Just op )
+    case cfg.parse state.parseState data of
+        Ok ( ops, parseState ) ->
+            ( { state | parseState = parseState }, ops )
 
-        Protocol.Partial op ->
-            ( { state | partialOperation = Just op }, Nothing )
-
-        Protocol.Error err ->
+        Err err ->
             ( { state
-                | partialOperation = Nothing
+                | parseState = Protocol.initialParseState
                 , status = Socket.Error err
               }
-            , Nothing
+            , []
             )
 
 
@@ -365,15 +403,19 @@ receive :
         )
 receive cfg data state =
     let
-        ( parseState, maybeOperation ) =
+        ( parseState, ops ) =
             parse cfg data state
     in
-    case maybeOperation of
-        Nothing ->
+    ops
+        |> List.foldl
+            (\op ( st, ( msgs, cmds ) ) ->
+                let
+                    ( newSt, ( opMsgs, opCmds ) ) =
+                        receiveOperation cfg op st
+                in
+                ( newSt, ( msgs ++ opMsgs, cmds ++ opCmds ) )
+            )
             ( parseState, ( [], [] ) )
-
-        Just op ->
-            receiveOperation cfg op parseState
 
 
 ackCONNECT : SocketState datatype msg -> SocketState datatype msg
@@ -438,38 +480,47 @@ receiveOperation cfg operation state =
 
                 Just sub ->
                     let
-                        ( actualMessage, continue ) =
+                        ( msgList, continue ) =
                             case sub.subType of
                                 Req { onMessage } ->
                                     onMessage message
+                                        |> Tuple.mapFirst
+                                            (Maybe.map List.singleton
+                                                >> Maybe.withDefault []
+                                            )
 
                                 Closed ->
-                                    ( Nothing, False )
+                                    ( [], False )
 
-                                Sub ->
-                                    ( Just message, True )
+                                Sub handlers ->
+                                    ( handlers |> List.map (\onMsg -> onMsg message), True )
 
                         nextState : SocketState datatype msg
                         nextState =
                             if continue then
+                                -- TODO update the deadline
                                 state
 
                             else
+                                let
+                                    key =
+                                        subscriptionKey sub
+
+                                    newSub =
+                                        { sub | subType = Closed }
+
+                                    newKey =
+                                        subscriptionKey newSub
+                                in
                                 { state
                                     | nextSubscriptions =
-                                        Dict.insert ( sub.subject, sub.group )
-                                            { sub | subType = Closed }
-                                            state.nextSubscriptions
+                                        state.nextSubscriptions
+                                            |> Dict.remove key
+                                            |> Dict.insert newKey newSub
                                 }
                     in
                     ( nextState
-                    , ( case actualMessage of
-                            Nothing ->
-                                []
-
-                            Just msg ->
-                                sub.handlers
-                                    |> List.map (\onMessage -> onMessage msg)
+                    , ( msgList
                       , []
                       )
                     )

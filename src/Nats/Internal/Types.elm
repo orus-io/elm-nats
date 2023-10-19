@@ -21,7 +21,7 @@ type Config datatype portdatatype msg
         , onError : Maybe (String -> msg)
         , size : datatype -> Int
         , mode : String
-        , parse : datatype -> Maybe (Protocol.PartialOperation datatype) -> Protocol.OperationResult datatype
+        , parse : Protocol.ParseState datatype -> datatype -> Protocol.ParseResult datatype
         , write : Protocol.Operation datatype -> datatype
         , fromPortMessage : portdatatype -> Result String datatype
         , toPortMessage : datatype -> portdatatype
@@ -51,6 +51,14 @@ type Msg datatype msg
 
 type Effect datatype msg
     = Pub { sid : Maybe String, subject : String, replyTo : Maybe String, message : datatype }
-    | Request { sid : Maybe String, subject : String, message : datatype, timeout : Maybe Int, onResponse : Result Timeout datatype -> msg }
+    | Request
+        { sid : Maybe String
+        , marker : Maybe String
+        , subject : String
+        , message : datatype
+        , timeout : Maybe Int
+        , onTimeout : Timeout -> msg
+        , onResponse : Protocol.Message datatype -> ( Maybe msg, Bool )
+        }
     | NoEffect
     | BatchEffect (List (Effect datatype msg))

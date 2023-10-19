@@ -2,10 +2,10 @@ module Nats exposing
     ( connect
     , publish
     , subscribe, groupSubscribe
-    , request, requestWithTimeout
+    , request, requestWithTimeout, customRequest
     , Config, State, Msg
     , Effect, Sub, applyEffectAndSub
-    , init, update, subscriptions
+    , init, update, subscriptions, activeRequests
     )
 
 {-| A nats.io client for Elm
@@ -22,7 +22,7 @@ module Nats exposing
 
 @docs subscribe, groupSubscribe
 
-@docs request, requestWithTimeout
+@docs request, requestWithTimeout, customRequest
 
 
 # Types
@@ -37,7 +37,7 @@ module Nats exposing
 
 # ...
 
-@docs init, update, subscriptions
+@docs init, update, subscriptions, activeRequests
 
 -}
 
@@ -352,7 +352,7 @@ toCmd (Types.Config cfg) effect ((State state) as oState) =
                         |> Cmd.map cfg.parentMsg
                     )
 
-        Request { sid, subject, message, onResponse, timeout } ->
+        Request { sid, marker, subject, message, onTimeout, onResponse, timeout } ->
             case sid |> Maybe.withDefault (state.defaultSocket |> Maybe.withDefault "") of
                 "" ->
                     ( oState
@@ -372,9 +372,11 @@ toCmd (Types.Config cfg) effect ((State state) as oState) =
                                         let
                                             ( newSocket, ops ) =
                                                 SocketState.addRequest (Types.Config cfg)
-                                                    { subject = subject
+                                                    { marker = marker
+                                                    , subject = subject
                                                     , inbox = inbox
                                                     , message = message
+                                                    , onTimeout = onTimeout
                                                     , onResponse = onResponse
                                                     , deadline = state.time + 1000 * (timeout |> Maybe.withDefault 5)
                                                     }
@@ -589,6 +591,35 @@ applyEffectAndSub (Types.Config cfg) effect sub state =
     ( s2, Cmd.batch [ cmd1, cmd2 ] )
 
 
+{-| List all the active requests
+-}
+activeRequests :
+    State datatype msg
+    -> List { sid : String, id : String, marker : Maybe String, subject : String, inbox : String }
+activeRequests (State state) =
+    state.sockets
+        |> SocketStateCollection.toList
+        |> List.concatMap
+            (\socket ->
+                socket.activeSubscriptions
+                    |> List.filterMap
+                        (\sub ->
+                            case sub.subType of
+                                SocketState.Req { subject, marker } ->
+                                    Just
+                                        { sid = socket.socket.id
+                                        , id = sub.id
+                                        , marker = marker
+                                        , subject = subject
+                                        , inbox = sub.subject
+                                        }
+
+                                _ ->
+                                    Nothing
+                        )
+            )
+
+
 doSend : Config datatype portdatatype msg -> Ports.Message datatype -> Cmd (Msg datatype msg)
 doSend (Types.Config cfg) message =
     { sid = message.sid
@@ -637,9 +668,13 @@ request : String -> datatype -> (Result Timeout datatype -> msg) -> Effect datat
 request subject message onResponse =
     Request
         { sid = Nothing
+        , marker = Nothing
         , subject = subject
         , message = message
-        , onResponse = onResponse
+        , onTimeout = Err >> onResponse
+        , onResponse =
+            \msg ->
+                ( Just <| onResponse <| Ok msg.data, False )
         , timeout = Nothing
         }
 
@@ -650,10 +685,37 @@ requestWithTimeout : Int -> String -> datatype -> (Result Timeout datatype -> ms
 requestWithTimeout timeout subject message onResponse =
     Request
         { sid = Nothing
+        , marker = Nothing
         , subject = subject
         , message = message
-        , onResponse = onResponse
+        , onTimeout = Err >> onResponse
+        , onResponse =
+            \msg ->
+                ( Just <| onResponse <| Ok msg.data, False )
         , timeout = Just timeout
+        }
+
+
+{-| Create a request with custom features
+-}
+customRequest :
+    { marker : String
+    , subject : String
+    , message : datatype
+    , onTimeout : Timeout -> msg
+    , onResponse : Protocol.Message datatype -> ( Maybe msg, Bool )
+    , timeout : Maybe Int
+    }
+    -> Effect datatype msg
+customRequest { marker, subject, message, onTimeout, onResponse, timeout } =
+    Request
+        { sid = Nothing
+        , marker = Just marker
+        , subject = subject
+        , message = message
+        , onTimeout = onTimeout
+        , onResponse = onResponse
+        , timeout = timeout
         }
 
 

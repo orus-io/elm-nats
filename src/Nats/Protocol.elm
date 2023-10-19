@@ -1,7 +1,7 @@
 module Nats.Protocol exposing
     ( Operation(..), Message, ServerInfo, ConnectOptions
     , parseString, parseBytes, toBytes, toString
-    , OperationResult(..), PartialOperation
+    , ParseResult, ParseState, initialParseState
     )
 
 {-| Provides types and utilities for the NATS protocol
@@ -9,7 +9,7 @@ module Nats.Protocol exposing
 @docs Operation, Message, ServerInfo, ConnectOptions
 @docs parseString, parseBytes, toBytes, toString
 
-@docs OperationResult, PartialOperation
+@docs ParseResult, ParseState, initialParseState
 
 -}
 
@@ -26,15 +26,6 @@ import Regex exposing (Regex)
 -}
 type alias Message datatype =
     { subject : String
-    , replyTo : String
-    , size : Int
-    , data : datatype
-    }
-
-
-type alias PartialMessage datatype =
-    { subject : String
-    , sid : String
     , replyTo : String
     , size : Int
     , data : datatype
@@ -177,28 +168,38 @@ parseCommandMessage str =
             Result.Err <| "Invalid MSG syntax: " ++ str
 
 
+initialParseState : ParseState datatype
+initialParseState =
+    PartialCommand ""
+
+
 {-| A temporary state when a parsing an operation is incomplete
 -}
-type PartialOperation datatype
-    = PartialOperation (PartialMessage datatype)
+type ParseState datatype
+    = PartialMessage
+        { subject : String
+        , sid : String
+        , replyTo : String
+        , size : Int
+        , data : datatype
+        }
+    | PartialCommand String
 
 
 {-| The result of parsing an operation
 -}
-type OperationResult datatype
-    = Operation (Operation datatype)
-    | Partial (PartialOperation datatype)
-    | Error String
+type alias ParseResult datatype =
+    Result String ( List (Operation datatype), ParseState datatype )
 
 
-splitFirstLine : String -> ( String, String )
+splitFirstLine : String -> ( String, Maybe String )
 splitFirstLine s =
     case String.indexes cr s of
         [] ->
-            ( s, "" )
+            ( s, Nothing )
 
         i :: _ ->
-            ( String.left i s, String.dropLeft (i + 2) s )
+            ( String.left i s, Just <| String.dropLeft (i + 2) s )
 
 
 parseCommand : datatype -> String -> Result String (Operation datatype)
@@ -248,10 +249,10 @@ parseCommand empty c =
 Any message contained will be of type 'String'
 
 -}
-parseString : String -> Maybe (PartialOperation String) -> OperationResult String
-parseString str partialOp =
+parseString : ParseState String -> String -> ParseResult String
+parseString partialOp str =
     case partialOp of
-        Just (PartialOperation partial) ->
+        PartialMessage partial ->
             let
                 data : String
                 data =
@@ -262,56 +263,107 @@ parseString str partialOp =
                     String.length data
             in
             if newDataSize == partial.size + 2 && String.endsWith cr data then
-                Operation <|
-                    MSG partial.sid <|
-                        { subject = partial.subject
-                        , replyTo = partial.replyTo
-                        , size = partial.size
-                        , data = String.dropRight 2 data
-                        }
+                Ok
+                    ( [ MSG partial.sid <|
+                            { subject = partial.subject
+                            , replyTo = partial.replyTo
+                            , size = partial.size
+                            , data = String.dropRight 2 data
+                            }
+                      ]
+                    , initialParseState
+                    )
 
             else if newDataSize > partial.size + 2 then
-                Error <| "Received too many data for the message"
+                case parseString initialParseState (String.dropLeft (partial.size + 2) data) of
+                    Err err ->
+                        Err err
+
+                    Ok ( ops, nextPartial ) ->
+                        Ok
+                            ( MSG partial.sid
+                                { subject = partial.subject
+                                , replyTo = partial.replyTo
+                                , size = partial.size
+                                , data = String.left partial.size data
+                                }
+                                :: ops
+                            , nextPartial
+                            )
 
             else
-                Partial <|
-                    PartialOperation
-                        { partial | data = data }
+                Ok ( [], PartialMessage { partial | data = data } )
 
-        Nothing ->
-            let
-                ( firstLine, payload ) =
-                    splitFirstLine str
-            in
-            case parseCommand "" firstLine of
-                Err err ->
-                    Error err
+        PartialCommand partial ->
+            case
+                splitFirstLine str
+            of
+                ( firstLine, Nothing ) ->
+                    Ok ( [], PartialCommand <| partial ++ firstLine )
 
-                Ok (MSG sid msg) ->
-                    if String.length payload == msg.size + 2 && String.endsWith cr payload then
-                        Operation <|
-                            MSG sid
-                                { subject = msg.subject
-                                , replyTo = msg.replyTo
-                                , size = msg.size
-                                , data = String.dropRight 2 payload
-                                }
+                ( firstLine, Just tail ) ->
+                    case parseCommand "" (partial ++ firstLine) of
+                        Err err ->
+                            Err err
 
-                    else if String.length payload > msg.size + 2 then
-                        Error <| "Too many data in the message payload"
+                        Ok (MSG sid msg) ->
+                            if String.length tail == msg.size + 2 then
+                                if String.endsWith cr tail then
+                                    Ok
+                                        ( [ MSG sid
+                                                { subject = msg.subject
+                                                , replyTo = msg.replyTo
+                                                , size = msg.size
+                                                , data = String.dropRight 2 tail
+                                                }
+                                          ]
+                                        , initialParseState
+                                        )
 
-                    else
-                        Partial <|
-                            PartialOperation
-                                { sid = sid
-                                , subject = msg.subject
-                                , replyTo = msg.replyTo
-                                , size = msg.size
-                                , data = payload
-                                }
+                                else
+                                    Err "message payload size mismatch"
 
-                Ok op ->
-                    Operation op
+                            else if String.length tail > msg.size + 2 then
+                                if String.dropLeft msg.size tail |> String.startsWith cr then
+                                    case parseString initialParseState (String.dropLeft (msg.size + 2) tail) of
+                                        Err err ->
+                                            Err err
+
+                                        Ok ( ops, nextPartial ) ->
+                                            Ok
+                                                ( MSG sid
+                                                    { subject = msg.subject
+                                                    , replyTo = msg.replyTo
+                                                    , size = msg.size
+                                                    , data = String.left msg.size tail
+                                                    }
+                                                    :: ops
+                                                , nextPartial
+                                                )
+
+                                else
+                                    Err "message payload size mismatch"
+
+                            else
+                                Ok
+                                    ( []
+                                    , PartialMessage
+                                        { sid = sid
+                                        , subject = msg.subject
+                                        , replyTo = msg.replyTo
+                                        , size = msg.size
+                                        , data = tail
+                                        }
+                                    )
+
+                        Ok op ->
+                            case parseString initialParseState tail of
+                                Err err ->
+                                    Err err
+
+                                Ok ( ops, nextPartial ) ->
+                                    Ok
+                                        ( op :: ops, nextPartial )
 
 
 findStringInBytes : String -> Bytes -> Maybe Int
@@ -365,10 +417,69 @@ findStringInBytes s =
 Any message contained will be of type 'Bytes'
 
 -}
-parseBytes : Bytes -> Maybe (PartialOperation Bytes) -> OperationResult Bytes
-parseBytes data partial =
-    case partial of
-        Just (PartialOperation msg) ->
+parseBytes : ParseState Bytes -> Bytes -> ParseResult Bytes
+parseBytes partialOp data =
+    case partialOp of
+        PartialCommand partial ->
+            case findStringInBytes cr data of
+                Nothing ->
+                    case
+                        data
+                            |> Bytes.Decode.decode
+                                (Bytes.Decode.string (Bytes.width data))
+                    of
+                        Just s ->
+                            Ok
+                                ( []
+                                , PartialCommand <|
+                                    partial
+                                        ++ s
+                                )
+
+                        Nothing ->
+                            Err "could not decode partial command"
+
+                Just index ->
+                    case
+                        Bytes.Decode.decode
+                            (Bytes.Decode.string index
+                                |> Bytes.Decode.map (\s -> parseCommand emptyBytes (partial ++ s))
+                            )
+                            data
+                    of
+                        Nothing ->
+                            Err "could not decode input"
+
+                        Just (Err err) ->
+                            Err err
+
+                        Just (Ok cmd) ->
+                            let
+                                tail =
+                                    bytesDropLeft (index + 2) data
+                            in
+                            case cmd of
+                                MSG sid msg ->
+                                    parseBytes
+                                        (PartialMessage
+                                            { sid = sid
+                                            , subject = msg.subject
+                                            , replyTo = msg.replyTo
+                                            , size = msg.size
+                                            , data = emptyBytes
+                                            }
+                                        )
+                                        tail
+
+                                any ->
+                                    case parseBytes initialParseState tail of
+                                        Ok ( ops, p ) ->
+                                            Ok ( any :: ops, p )
+
+                                        Err err ->
+                                            Err err
+
+        PartialMessage msg ->
             let
                 body : Bytes
                 body =
@@ -383,75 +494,40 @@ parseBytes data partial =
                     Bytes.width body
             in
             if bodyWidth == msg.size + 2 then
-                Operation <|
-                    MSG msg.sid
-                        { subject = msg.subject
-                        , replyTo = msg.replyTo
-                        , size = msg.size
-                        , data = body
-                        }
+                Ok
+                    ( [ MSG msg.sid
+                            { subject = msg.subject
+                            , replyTo = msg.replyTo
+                            , size = msg.size
+
+                            -- TODO make sure the 2 last bytes are a cr
+                            , data = body |> bytesDropRight 2
+                            }
+                      ]
+                    , initialParseState
+                    )
 
             else if bodyWidth > msg.size + 2 then
-                Error "message payload is too big"
+                case parseBytes initialParseState <| bytesDropLeft (msg.size + 2) body of
+                    Err err ->
+                        Err err
+
+                    Ok ( ops, partial ) ->
+                        Ok
+                            ( MSG msg.sid
+                                { subject = msg.subject
+                                , replyTo = msg.replyTo
+                                , size = msg.size
+
+                                -- TODO make sure the 2 last bytes are a cr
+                                , data = body |> bytesLeft msg.size
+                                }
+                                :: ops
+                            , partial
+                            )
 
             else
-                Partial <| PartialOperation <| { msg | data = body }
-
-        Nothing ->
-            case findStringInBytes cr data of
-                Nothing ->
-                    Error "Could not find CR separator"
-
-                Just index ->
-                    Bytes.Decode.decode
-                        (Bytes.Decode.string index
-                            |> Bytes.Decode.andThen
-                                (\s ->
-                                    case parseCommand emptyBytes s of
-                                        Ok (MSG sid msg) ->
-                                            let
-                                                payloadWidth : Int
-                                                payloadWidth =
-                                                    Bytes.width data - (index + 2)
-                                            in
-                                            if msg.size + 2 < payloadWidth then
-                                                Bytes.Decode.fail
-
-                                            else if msg.size + 2 == payloadWidth then
-                                                Bytes.Decode.map2
-                                                    (\_ payload ->
-                                                        Operation <|
-                                                            MSG sid { msg | data = payload }
-                                                    )
-                                                    (Bytes.Decode.bytes 2)
-                                                    (Bytes.Decode.bytes msg.size)
-
-                                            else
-                                                Bytes.Decode.map2
-                                                    (\_ payload ->
-                                                        Partial <|
-                                                            PartialOperation
-                                                                { sid = sid
-                                                                , subject = msg.subject
-                                                                , replyTo = msg.replyTo
-                                                                , size = msg.size
-                                                                , data = payload
-                                                                }
-                                                    )
-                                                    (Bytes.Decode.bytes 2)
-                                                    (Bytes.Decode.bytes payloadWidth)
-
-                                        Ok any ->
-                                            Bytes.Decode.succeed <|
-                                                Operation any
-
-                                        Err err ->
-                                            Bytes.Decode.succeed <|
-                                                Error err
-                                )
-                        )
-                        data
-                        |> Maybe.withDefault (Error "could not decode input")
+                Ok ( [], PartialMessage { msg | data = body } )
 
 
 encodeConnect : ConnectOptions -> JsonE.Value
@@ -623,3 +699,69 @@ emptyBytes =
 crBytes : Bytes
 crBytes =
     stringBytes cr
+
+
+bytesDropLeft : Int -> Bytes -> Bytes
+bytesDropLeft size data =
+    let
+        totalSize =
+            Bytes.width data
+
+        firstSize =
+            if size < totalSize then
+                size
+
+            else
+                totalSize
+    in
+    Bytes.Decode.decode
+        (Bytes.Decode.map2 (\_ s -> s)
+            (Bytes.Decode.bytes firstSize)
+            (Bytes.Decode.bytes (totalSize - firstSize))
+        )
+        data
+        |> Maybe.withDefault emptyBytes
+
+
+bytesLeft : Int -> Bytes -> Bytes
+bytesLeft size data =
+    let
+        totalSize =
+            Bytes.width data
+
+        firstSize =
+            if size < totalSize then
+                size
+
+            else
+                totalSize
+    in
+    Bytes.Decode.decode
+        (Bytes.Decode.map2 (\s _ -> s)
+            (Bytes.Decode.bytes firstSize)
+            (Bytes.Decode.bytes (totalSize - firstSize))
+        )
+        data
+        |> Maybe.withDefault emptyBytes
+
+
+bytesDropRight : Int -> Bytes -> Bytes
+bytesDropRight size data =
+    let
+        totalSize =
+            Bytes.width data
+
+        secondSize =
+            if size < totalSize then
+                size
+
+            else
+                totalSize
+    in
+    Bytes.Decode.decode
+        (Bytes.Decode.map2 (\s _ -> s)
+            (Bytes.Decode.bytes (totalSize - secondSize))
+            (Bytes.Decode.bytes secondSize)
+        )
+        data
+        |> Maybe.withDefault emptyBytes
