@@ -6,6 +6,7 @@ module Nats exposing
     , Config, State, Msg
     , Effect, Sub, applyEffectAndSub
     , init, update, subscriptions, activeRequests
+    , cancelRequest
     )
 
 {-| A nats.io client for Elm
@@ -407,6 +408,32 @@ toCmd (Types.Config cfg) effect ((State state) as oState) =
                     in
                     ( nextState, Cmd.map cfg.parentMsg cmd )
 
+        CancelRequest { sid, marker } ->
+            case sid |> Maybe.withDefault (state.defaultSocket |> Maybe.withDefault "") of
+                "" ->
+                    ( oState
+                    , logError (Types.Config cfg) "cannot cancel request: Could not determine the sid"
+                    )
+
+                s ->
+                    let
+                        ( nextState, _, cmd ) =
+                            oState
+                                |> updateSocket (Types.Config cfg)
+                                    s
+                                    (\socket ->
+                                        let
+                                            newSocket =
+                                                SocketState.cancelRequest marker socket
+                                        in
+                                        ( Just newSocket
+                                        , []
+                                        , Cmd.none
+                                        )
+                                    )
+                    in
+                    ( nextState, Cmd.map cfg.parentMsg cmd )
+
         BatchEffect list ->
             list
                 |> List.foldl
@@ -619,6 +646,13 @@ activeRequests (State state) =
                                     Nothing
                         )
             )
+
+
+{-| Cancel an active request, given its marker
+-}
+cancelRequest : String -> Effect datatype msg
+cancelRequest marker =
+    Types.CancelRequest { sid = Nothing, marker = marker }
 
 
 doSend : Config datatype portdatatype msg -> Ports.Message datatype -> Cmd (Msg datatype msg)

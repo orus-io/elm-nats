@@ -60,5 +60,6 @@ type Effect datatype msg
         , onTimeout : Timeout -> msg
         , onResponse : Protocol.Message datatype -> ( Maybe msg, Bool )
         }
+    | CancelRequest { sid : Maybe String, marker : String }
     | NoEffect
     | BatchEffect (List (Effect datatype msg))

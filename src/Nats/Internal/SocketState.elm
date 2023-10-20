@@ -4,6 +4,7 @@ module Nats.Internal.SocketState exposing
     , SubType(..)
     , addRequest
     , addSubscription
+    , cancelRequest
     , finalizeSubscriptions
     , init
     , update
@@ -197,6 +198,21 @@ getSubscriptionByID id state =
         |> List.head
 
 
+getSubscriptionByMarker : String -> SocketState datatype msg -> Maybe (Subscription datatype msg)
+getSubscriptionByMarker reqMarker state =
+    state.activeSubscriptions
+        |> List.filter
+            (\sub ->
+                case sub.subType of
+                    Req { marker } ->
+                        marker == Just reqMarker
+
+                    _ ->
+                        False
+            )
+        |> List.head
+
+
 getSubscriptionBySubjectGroup : ( String, String ) -> SocketState datatype msg -> Maybe (Subscription datatype msg)
 getSubscriptionBySubjectGroup ( subject, group ) state =
     state.activeSubscriptions
@@ -345,6 +361,36 @@ addRequest (Config cfg) req state =
             }
       ]
     )
+
+
+cancelRequest :
+    String
+    -> SocketState datetype msg
+    -> SocketState datetype msg
+cancelRequest marker state =
+    case
+        getSubscriptionByMarker marker state
+    of
+        Just sub ->
+            let
+                key =
+                    subscriptionKey sub
+
+                newSub =
+                    { sub | subType = Closed }
+
+                newKey =
+                    subscriptionKey newSub
+            in
+            { state
+                | nextSubscriptions =
+                    state.nextSubscriptions
+                        |> Dict.remove key
+                        |> Dict.insert newKey newSub
+            }
+
+        Nothing ->
+            state
 
 
 parse : Config datatype portdatatype msg -> datatype -> SocketState datatype msg -> ( SocketState datatype msg, List (Protocol.Operation datatype) )
