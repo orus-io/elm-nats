@@ -19,8 +19,8 @@ import Nats.Socket as Socket
 import Time
 
 
-init : ConnectOptions -> (SocketEvent -> msg) -> Types.Socket -> SocketState datatype msg
-init options onEvent (Types.Socket socket) =
+init : ConnectOptions -> (SocketEvent -> msg) -> Types.Socket -> Int -> SocketState datatype msg
+init options onEvent (Types.Socket socket) time =
     { socket = socket
     , connectOptions = options
     , onEvent = onEvent
@@ -30,6 +30,7 @@ init options onEvent (Types.Socket socket) =
     , lastSubID = 0
     , activeSubscriptions = []
     , nextSubscriptions = Dict.empty
+    , time = time
     }
 
 
@@ -39,6 +40,7 @@ type SubType datatype msg
     | Req
         { marker : Maybe String
         , subject : String
+        , timeout : Int
         , deadline : Int
         , onTimeout : Time.Posix -> msg
         , onMessage : Protocol.Message datatype -> ( Maybe msg, Bool )
@@ -111,8 +113,7 @@ type alias SocketState datatype msg =
     , lastSubID : Int
     , activeSubscriptions : List (Subscription datatype msg)
     , nextSubscriptions : Dict ( String, String, String ) (Subscription datatype msg)
-
-    -- , lastSeen : Maybe Time
+    , time : Int
     }
 
 
@@ -315,7 +316,8 @@ addRequest :
         , subject : String
         , inbox : String
         , message : datatype
-        , deadline : Int
+        , timeout : Int
+        , time : Int
         , onTimeout : Timeout -> msg
         , onResponse : Protocol.Message datatype -> ( Maybe msg, Bool )
         }
@@ -326,7 +328,8 @@ addRequest (Config cfg) req state =
         (Req
             { marker = req.marker
             , subject = req.subject
-            , deadline = req.deadline
+            , timeout = req.timeout
+            , deadline = req.time + req.timeout
             , onTimeout = req.onTimeout
             , onMessage = req.onResponse
             }
@@ -384,7 +387,7 @@ handleTimeouts time state =
                     )
                     ( Dict.empty, [] )
     in
-    ( { state | nextSubscriptions = subs }
+    ( { state | nextSubscriptions = subs, time = time }
     , ( msgList
       , []
       )
@@ -497,15 +500,32 @@ receiveOperation cfg operation state =
 
                         nextState : SocketState datatype msg
                         nextState =
+                            let
+                                key =
+                                    subscriptionKey sub
+                            in
                             if continue then
-                                -- TODO update the deadline
-                                state
+                                case sub.subType of
+                                    Req req ->
+                                        { state
+                                            | nextSubscriptions =
+                                                state.nextSubscriptions
+                                                    |> Dict.insert key
+                                                        { sub
+                                                            | subType =
+                                                                Req
+                                                                    { req
+                                                                        | deadline =
+                                                                            state.time + req.timeout
+                                                                    }
+                                                        }
+                                        }
+
+                                    _ ->
+                                        state
 
                             else
                                 let
-                                    key =
-                                        subscriptionKey sub
-
                                     newSub =
                                         { sub | subType = Closed }
 

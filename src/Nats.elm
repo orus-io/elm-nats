@@ -378,7 +378,8 @@ toCmd (Types.Config cfg) effect ((State state) as oState) =
                                                     , message = message
                                                     , onTimeout = onTimeout
                                                     , onResponse = onResponse
-                                                    , deadline = state.time + 1000 * (timeout |> Maybe.withDefault 5)
+                                                    , timeout = (timeout |> Maybe.withDefault 5) * 1000
+                                                    , time = state.time
                                                     }
                                                     socket
                                         in
@@ -520,7 +521,7 @@ handleSubHelper (Types.Config cfg) sub ((State state) as oState) =
                             | sockets =
                                 state.sockets
                                     |> SocketStateCollection.insert
-                                        (SocketState.init options onEvent socket)
+                                        (SocketState.init options onEvent socket state.time)
                             , defaultSocket =
                                 case state.defaultSocket of
                                     Nothing ->
