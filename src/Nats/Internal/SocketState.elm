@@ -462,7 +462,7 @@ receive cfg data state =
                     ( newSt, ( opMsgs, opCmds ) ) =
                         receiveOperation cfg op st
                 in
-                ( newSt, ( msgs ++ opMsgs, cmds ++ opCmds ) )
+                ( newSt, ( opMsgs ++ msgs, opCmds ++ cmds ) )
             )
             ( parseState, ( [], [] ) )
 
