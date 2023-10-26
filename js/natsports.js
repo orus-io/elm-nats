@@ -7,6 +7,10 @@ function setupNatsPorts(app) {
 
             const socket = sockets[sid];
 
+            if (socket.debug) {
+                console.log("socket", sid, "closing") 
+            }
+
             if (socket) {
                 socket.socket.close();
             }
@@ -18,7 +22,7 @@ function setupNatsPorts(app) {
             if (socket) {
                 let message = command.send.message;
                 if (socket.mode == "binary") {
-                    message = atob(message)
+                    message = Uint8Array.from(atob(message), c => c.charCodeAt(0));
                 }
                 if(socket.debug) {
                     console.log("socket", sid, "sending", message);
