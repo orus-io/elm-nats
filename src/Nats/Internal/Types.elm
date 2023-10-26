@@ -55,6 +55,7 @@ type Effect datatype msg
         { sid : Maybe String
         , marker : Maybe String
         , subject : String
+        , replyTo : Maybe String
         , message : datatype
         , timeout : Maybe Int
         , onTimeout : Timeout -> msg

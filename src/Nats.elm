@@ -1,9 +1,9 @@
 module Nats exposing
     ( connect
-    , publish
+    , publish, publishRequest
     , subscribe, groupSubscribe
     , request, requestWithTimeout, customRequest
-    , Config, State, Msg
+    , Config, State, Msg, withInboxPrefix
     , Effect, Sub, applyEffectAndSub
     , init, update, subscriptions, activeRequests
     , cancelRequest
@@ -19,7 +19,7 @@ module Nats exposing
 
 # pub/sub/request
 
-@docs publish
+@docs publish, publishRequest
 
 @docs subscribe, groupSubscribe
 
@@ -28,7 +28,7 @@ module Nats exposing
 
 # Types
 
-@docs Config, State, Msg
+@docs Config, State, Msg, withInboxPrefix
 
 
 # Effects
@@ -97,6 +97,14 @@ type State datatype msg
         , nuid : Nuid
         , inboxPrefix : String
         , time : Int -- store the time in ms to make deadline calcs simpler
+        }
+
+
+withInboxPrefix : String -> State datatype msg -> State datatype msg
+withInboxPrefix prefix (State state) =
+    State
+        { state
+            | inboxPrefix = prefix
         }
 
 
@@ -353,7 +361,7 @@ toCmd (Types.Config cfg) effect ((State state) as oState) =
                         |> Cmd.map cfg.parentMsg
                     )
 
-        Request { sid, marker, subject, message, onTimeout, onResponse, timeout } ->
+        Request { sid, marker, subject, replyTo, message, onTimeout, onResponse, timeout } ->
             case sid |> Maybe.withDefault (state.defaultSocket |> Maybe.withDefault "") of
                 "" ->
                     ( oState
@@ -363,7 +371,12 @@ toCmd (Types.Config cfg) effect ((State state) as oState) =
                 s ->
                     let
                         ( inbox, state1 ) =
-                            nextInbox oState
+                            case replyTo of
+                                Just inboxSubject ->
+                                    ( inboxSubject, oState )
+
+                                Nothing ->
+                                    nextInbox oState
 
                         ( nextState, _, cmd ) =
                             state1
@@ -705,6 +718,7 @@ request subject message onResponse =
         { sid = Nothing
         , marker = Nothing
         , subject = subject
+        , replyTo = Nothing
         , message = message
         , onTimeout = Err >> onResponse
         , onResponse =
@@ -722,6 +736,7 @@ requestWithTimeout timeout subject message onResponse =
         { sid = Nothing
         , marker = Nothing
         , subject = subject
+        , replyTo = Nothing
         , message = message
         , onTimeout = Err >> onResponse
         , onResponse =
@@ -736,17 +751,19 @@ requestWithTimeout timeout subject message onResponse =
 customRequest :
     { marker : String
     , subject : String
+    , replyTo : Maybe String
     , message : datatype
     , onTimeout : Timeout -> msg
     , onResponse : Protocol.Message datatype -> ( Maybe msg, Bool )
     , timeout : Maybe Int
     }
     -> Effect datatype msg
-customRequest { marker, subject, message, onTimeout, onResponse, timeout } =
+customRequest { marker, subject, replyTo, message, onTimeout, onResponse, timeout } =
     Request
         { sid = Nothing
         , marker = Just marker
         , subject = subject
+        , replyTo = replyTo
         , message = message
         , onTimeout = onTimeout
         , onResponse = onResponse
@@ -762,6 +779,13 @@ If you wish to send it on a non-default socket, use Nats.Effect.onSocket
 publish : String -> datatype -> Effect datatype msg
 publish subject message =
     Pub { sid = Nothing, subject = subject, replyTo = Nothing, message = message }
+
+
+{-| Publish a new message on a given subject, with a 'replyTo' attribute
+-}
+publishRequest : String -> String -> datatype -> Effect datatype msg
+publishRequest subject replyTo message =
+    Pub { sid = Nothing, subject = subject, replyTo = Just replyTo, message = message }
 
 
 {-| Subscribe to a subject

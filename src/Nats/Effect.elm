@@ -34,11 +34,12 @@ map fn effect =
         Types.Pub pub ->
             Types.Pub pub
 
-        Types.Request { sid, marker, subject, message, onTimeout, onResponse, timeout } ->
+        Types.Request { sid, marker, subject, replyTo, message, onTimeout, onResponse, timeout } ->
             Types.Request
                 { sid = sid
                 , marker = marker
                 , subject = subject
+                , replyTo = replyTo
                 , message = message
                 , onTimeout = onTimeout >> fn
                 , onResponse = onResponse >> Tuple.mapFirst (Maybe.map fn)
