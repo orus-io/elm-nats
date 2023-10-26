@@ -506,7 +506,7 @@ receiveOperation cfg operation state =
                 | serverInfo = Just serverInfo
               }
                 |> setStatus Socket.Connecting
-            , ( [ Events.SocketOpen serverInfo |> state.onEvent ]
+            , ( []
               , [ Protocol.CONNECT state.connectOptions
                     |> operationToPortCommand cfg state.socket.id
                 ]
