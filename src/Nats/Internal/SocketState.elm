@@ -7,6 +7,7 @@ module Nats.Internal.SocketState exposing
     , cancelRequest
     , finalizeSubscriptions
     , init
+    , track
     , update
     )
 
@@ -31,6 +32,8 @@ init options onEvent (Types.Socket socket) time =
     , lastSubID = 0
     , activeSubscriptions = []
     , nextSubscriptions = Dict.empty
+    , activeTrackers = []
+    , nextTrackers = []
     , time = time
     }
 
@@ -114,6 +117,8 @@ type alias SocketState datatype msg =
     , lastSubID : Int
     , activeSubscriptions : List (Subscription datatype msg)
     , nextSubscriptions : Dict ( String, String, String ) (Subscription datatype msg)
+    , activeTrackers : List String
+    , nextTrackers : List String
     , time : Int
     }
 
@@ -279,32 +284,37 @@ finalizeSubscriptions :
     SocketState datatype msg
     -> ( SocketState datatype msg, List (Protocol.Operation datatype) )
 finalizeSubscriptions state =
-    case state.status of
+    let
+        ( nextState, nextOps ) =
+            finalizeTrackers state
+    in
+    case nextState.status of
         Socket.Connected ->
             let
                 nextSubscriptions : List (Subscription datatype msg)
                 nextSubscriptions =
-                    state.nextSubscriptions
+                    nextState.nextSubscriptions
                         |> Dict.values
             in
-            ( { state
+            ( { nextState
                 | nextSubscriptions =
-                    state.nextSubscriptions
+                    nextState.nextSubscriptions
                         |> Dict.filter (\_ -> isRequest)
                 , activeSubscriptions = nextSubscriptions
               }
-            , (nextSubscriptions
-                |> List.filterMap
-                    (\sub ->
-                        case getSubscriptionByID sub.id state of
-                            Nothing ->
-                                Just <| Protocol.SUB sub.subject sub.group sub.id
+            , nextOps
+                ++ (nextSubscriptions
+                        |> List.filterMap
+                            (\sub ->
+                                case getSubscriptionByID sub.id nextState of
+                                    Nothing ->
+                                        Just <| Protocol.SUB sub.subject sub.group sub.id
 
-                            Just _ ->
-                                Nothing
-                    )
-              )
-                ++ (state.activeSubscriptions
+                                    Just _ ->
+                                        Nothing
+                            )
+                   )
+                ++ (nextState.activeSubscriptions
                         |> List.filterMap
                             (\sub ->
                                 case
@@ -319,6 +329,42 @@ finalizeSubscriptions state =
                                         Nothing
                             )
                    )
+            )
+
+        _ ->
+            ( nextState, nextOps )
+
+
+track : String -> SocketState datatype msg -> SocketState datatype msg
+track marker state =
+    { state
+        | nextTrackers = marker :: state.nextTrackers
+    }
+
+
+finalizeTrackers :
+    SocketState datatype msg
+    -> ( SocketState datatype msg, List (Protocol.Operation datatype) )
+finalizeTrackers state =
+    let
+        removedTrackers =
+            state.activeTrackers
+                |> List.filter
+                    (\marker ->
+                        List.filter ((==) marker) state.nextTrackers
+                            |> List.isEmpty
+                    )
+    in
+    case state.status of
+        Socket.Connected ->
+            ( List.foldl
+                cancelRequest
+                { state
+                    | nextTrackers = []
+                    , activeTrackers = state.nextTrackers
+                }
+                removedTrackers
+            , []
             )
 
         _ ->

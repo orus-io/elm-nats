@@ -7,6 +7,7 @@ module Nats.Internal.Sub exposing
     , none
     , socket
     , subscribe
+    , track
     )
 
 {-| A way of telling Nats : "Please subscribe to this subject and send
@@ -25,6 +26,12 @@ type Sub datatype msg
 type RealSub datatype msg
     = Connect ConnectOptions Socket (SocketEvent -> msg)
     | Subscribe { sid : Maybe String, subject : String, group : String, onMessage : Message datatype -> msg }
+    | Track { sid : Maybe String, marker : String }
+
+
+singleton : RealSub datatype msg -> Sub datatype msg
+singleton rs =
+    Sub [ rs ]
 
 
 connect :
@@ -43,6 +50,11 @@ subscribe props =
     Sub [ Subscribe props ]
 
 
+track : String -> Sub datatype msg
+track marker =
+    Track { sid = Nothing, marker = marker } |> singleton
+
+
 sortPriority : RealSub datatype msg -> Int
 sortPriority sub =
     case sub of
@@ -51,6 +63,9 @@ sortPriority sub =
 
         Subscribe _ ->
             2
+
+        Track _ ->
+            3
 
 
 sort : List (RealSub datatype msg) -> List (RealSub datatype msg)
@@ -91,6 +106,9 @@ map aToMsg (Sub sub) =
                             , group = group
                             , onMessage = onMessage >> aToMsg
                             }
+
+                    Track marker ->
+                        Track marker
             )
         |> Sub
 

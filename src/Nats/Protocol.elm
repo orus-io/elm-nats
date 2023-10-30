@@ -168,6 +168,8 @@ parseCommandMessage str =
             Result.Err <| "Invalid MSG syntax: " ++ str
 
 
+{-| Returns a initial ParseState
+-}
 initialParseState : ParseState datatype
 initialParseState =
     PartialCommand ""

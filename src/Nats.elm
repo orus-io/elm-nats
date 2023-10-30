@@ -2,11 +2,10 @@ module Nats exposing
     ( connect
     , publish, publishRequest
     , subscribe, groupSubscribe
-    , request, requestWithTimeout, customRequest
+    , request, requestWithTimeout, customRequest, track, cancelRequest, withMarker
     , Config, State, Msg, withInboxPrefix
     , Effect, Sub, applyEffectAndSub
     , init, update, subscriptions, activeRequests
-    , cancelRequest
     )
 
 {-| A nats.io client for Elm
@@ -23,7 +22,7 @@ module Nats exposing
 
 @docs subscribe, groupSubscribe
 
-@docs request, requestWithTimeout, customRequest
+@docs request, requestWithTimeout, customRequest, track, cancelRequest, withMarker
 
 
 # Types
@@ -100,6 +99,8 @@ type State datatype msg
         }
 
 
+{-| Set a custom inbox prefix
+-}
 withInboxPrefix : String -> State datatype msg -> State datatype msg
 withInboxPrefix prefix (State state) =
     State
@@ -616,6 +617,29 @@ handleSubHelper (Types.Config cfg) sub ((State state) as oState) =
                     in
                     ( newState, Nothing, Cmd.none )
 
+        Track { sid, marker } ->
+            case sid |> Maybe.withDefault (state.defaultSocket |> Maybe.withDefault "") of
+                "" ->
+                    ( oState
+                    , Nothing
+                    , logError (Types.Config cfg) "cannot subscribe: Could not determine the sid"
+                    )
+
+                s ->
+                    let
+                        ( newState, _, _ ) =
+                            oState
+                                |> updateSocket (Types.Config cfg)
+                                    s
+                                    (\socket ->
+                                        ( Just <| SocketState.track marker socket
+                                        , []
+                                        , Cmd.none
+                                        )
+                                    )
+                    in
+                    ( newState, Nothing, Cmd.none )
+
 
 {-| Update the nats state according to all the Nats.Effect and Nats.Sub gathered
 by the app root component, and emit all the necessary Cmd
@@ -769,6 +793,28 @@ customRequest { marker, subject, replyTo, message, onTimeout, onResponse, timeou
         , onResponse = onResponse
         , timeout = timeout
         }
+
+
+{-| Add a marker on a request
+
+If the effect is not a request, the function is no-op
+
+-}
+withMarker : String -> Effect datatype msg -> Effect datatype msg
+withMarker marker effect =
+    case effect of
+        Request req ->
+            Request { req | marker = Just marker }
+
+        _ ->
+            effect
+
+
+{-| Track a request
+-}
+track : String -> Sub datatype msg
+track =
+    ISub.track
 
 
 {-| Publish a new message on a given subject
