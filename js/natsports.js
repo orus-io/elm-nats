@@ -25,7 +25,12 @@ function setupNatsPorts(app) {
                     message = Uint8Array.from(atob(message), c => c.charCodeAt(0));
                 }
                 if(socket.debug) {
-                    console.log("socket", sid, "sending", message);
+                    console.log(
+                        "socket", sid, "sending",
+                        (socket.mode != "text") ?
+                            String.fromCharCode(...message)
+                            : message
+                    );
                 }
                 socket.socket.send(message);
                 if (command.send.ack !== null) {
