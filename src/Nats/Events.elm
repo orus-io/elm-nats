@@ -15,3 +15,4 @@ type SocketEvent
     = SocketOpen ServerInfo
     | SocketClose
     | SocketError String
+    | RequestCancel { sid : String, id : String, marker : Maybe String, subject : String, inbox : String }

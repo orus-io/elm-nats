@@ -2,10 +2,12 @@ module Nats.Internal.SocketState exposing
     ( Msg(..)
     , SocketState
     , SubType(..)
+    , SubscriptionState(..)
     , addRequest
     , addSubscription
     , cancelRequest
     , finalizeSubscriptions
+    , finalizeTrackers
     , init
     , track
     , update
@@ -13,7 +15,7 @@ module Nats.Internal.SocketState exposing
 
 import Dict exposing (Dict)
 import Nats.Errors exposing (Timeout)
-import Nats.Events as Events exposing (SocketEvent)
+import Nats.Events as Events exposing (SocketEvent(..))
 import Nats.Internal.Ports as Ports
 import Nats.Internal.Types as Types exposing (Config(..))
 import Nats.Protocol as Protocol exposing (ConnectOptions)
@@ -39,8 +41,7 @@ init options onEvent (Types.Socket socket) time =
 
 
 type SubType datatype msg
-    = Closed
-    | Sub (List (Protocol.Message datatype -> msg))
+    = Sub (List (Protocol.Message datatype -> msg))
     | Req
         { marker : Maybe String
         , subject : String
@@ -54,9 +55,6 @@ type SubType datatype msg
 subTypeKey : SubType datatype msg -> String
 subTypeKey subType =
     case subType of
-        Closed ->
-            "closed"
-
         Sub _ ->
             "sub"
 
@@ -74,11 +72,19 @@ subTypeMerge sub1 sub2 =
             sub1
 
 
+type SubscriptionState
+    = SubscriptionActive
+    | SubscriptionClosed
+    | SubscriptionCanceled
+    | SubscriptionTimeout
+
+
 type alias Subscription datatype msg =
     { id : String
     , subject : String
     , group : String
     , subType : SubType datatype msg
+    , state : SubscriptionState
     }
 
 
@@ -91,6 +97,16 @@ isRequest : Subscription datatype msg -> Bool
 isRequest sub =
     case sub.subType of
         Req _ ->
+            True
+
+        _ ->
+            False
+
+
+isActiveRequest : Subscription datatype msg -> Bool
+isActiveRequest sub =
+    case ( sub.state, sub.subType ) of
+        ( SubscriptionActive, Req _ ) ->
             True
 
         _ ->
@@ -275,6 +291,7 @@ addSubscriptionHelper subType subject group state =
                             , subject = subject
                             , group = group
                             , subType = subType
+                            , state = SubscriptionActive
                             }
                 , lastSubID = lastSubID
             }
@@ -284,55 +301,55 @@ finalizeSubscriptions :
     SocketState datatype msg
     -> ( SocketState datatype msg, List (Protocol.Operation datatype) )
 finalizeSubscriptions state =
-    let
-        ( nextState, nextOps ) =
-            finalizeTrackers state
-    in
-    case nextState.status of
+    case state.status of
         Socket.Connected ->
             let
                 nextSubscriptions : List (Subscription datatype msg)
                 nextSubscriptions =
-                    nextState.nextSubscriptions
+                    state.nextSubscriptions
                         |> Dict.values
             in
-            ( { nextState
+            ( { state
                 | nextSubscriptions =
-                    nextState.nextSubscriptions
-                        |> Dict.filter (\_ -> isRequest)
+                    state.nextSubscriptions
+                        |> Dict.filter (\_ -> isActiveRequest)
                 , activeSubscriptions = nextSubscriptions
               }
-            , nextOps
-                ++ (nextSubscriptions
-                        |> List.filterMap
-                            (\sub ->
-                                case getSubscriptionByID sub.id nextState of
-                                    Nothing ->
-                                        Just <| Protocol.SUB sub.subject sub.group sub.id
+            , (nextSubscriptions
+                |> List.filterMap
+                    (\sub ->
+                        case getSubscriptionByID sub.id state of
+                            Nothing ->
+                                Just <| Protocol.SUB sub.subject sub.group sub.id
 
-                                    Just _ ->
-                                        Nothing
-                            )
-                   )
-                ++ (nextState.activeSubscriptions
+                            Just _ ->
+                                Nothing
+                    )
+              )
+                ++ (state.activeSubscriptions
                         |> List.filterMap
                             (\sub ->
                                 case
-                                    nextSubscriptions
+                                    ( sub.state
+                                    , nextSubscriptions
                                         |> List.filter (\next -> next.id == sub.id)
                                         |> List.head
+                                    )
                                 of
-                                    Nothing ->
-                                        Just <| Protocol.UNSUB sub.id 0
-
-                                    Just _ ->
+                                    ( SubscriptionCanceled, _ ) ->
                                         Nothing
+
+                                    ( _, Just _ ) ->
+                                        Nothing
+
+                                    ( _, Nothing ) ->
+                                        Just <| Protocol.UNSUB sub.id 0
                             )
                    )
             )
 
         _ ->
-            ( nextState, nextOps )
+            ( state, [] )
 
 
 track : String -> SocketState datatype msg -> SocketState datatype msg
@@ -344,7 +361,7 @@ track marker state =
 
 finalizeTrackers :
     SocketState datatype msg
-    -> ( SocketState datatype msg, List (Protocol.Operation datatype) )
+    -> ( SocketState datatype msg, List msg, List (Protocol.Operation datatype) )
 finalizeTrackers state =
     let
         removedTrackers =
@@ -357,18 +374,25 @@ finalizeTrackers state =
     in
     case state.status of
         Socket.Connected ->
-            ( List.foldl
-                cancelRequest
-                { state
+            List.foldl
+                (\marker ( st, msgs, ops ) ->
+                    let
+                        ( nextSt, nextMsgs, nextOps ) =
+                            cancelRequest marker st
+                    in
+                    ( nextSt, msgs ++ nextMsgs, nextOps ++ ops )
+                )
+                ( { state
                     | nextTrackers = []
                     , activeTrackers = state.nextTrackers
-                }
+                  }
+                , []
+                , []
+                )
                 removedTrackers
-            , []
-            )
 
         _ ->
-            ( state, [] )
+            ( state, [], [] )
 
 
 addRequest :
@@ -412,31 +436,47 @@ addRequest (Config cfg) req state =
 cancelRequest :
     String
     -> SocketState datetype msg
-    -> SocketState datetype msg
+    -> ( SocketState datetype msg, List msg, List (Protocol.Operation datatype) )
 cancelRequest marker state =
     case
         getSubscriptionByMarker marker state
     of
         Just sub ->
-            let
-                key =
-                    subscriptionKey sub
+            case sub.subType of
+                Req request ->
+                    let
+                        key =
+                            subscriptionKey sub
 
-                newSub =
-                    { sub | subType = Closed }
+                        newSub =
+                            { sub | state = SubscriptionCanceled }
 
-                newKey =
-                    subscriptionKey newSub
-            in
-            { state
-                | nextSubscriptions =
-                    state.nextSubscriptions
-                        |> Dict.remove key
-                        |> Dict.insert newKey newSub
-            }
+                        newKey =
+                            subscriptionKey newSub
+                    in
+                    ( { state
+                        | nextSubscriptions =
+                            state.nextSubscriptions
+                                |> Dict.remove key
+                                |> Dict.insert newKey newSub
+                      }
+                    , [ state.onEvent <|
+                            RequestCancel
+                                { sid = state.socket.id
+                                , id = sub.id
+                                , marker = request.marker
+                                , subject = request.subject
+                                , inbox = sub.subject
+                                }
+                      ]
+                    , [ Protocol.UNSUB sub.id 0 ]
+                    )
+
+                _ ->
+                    ( state, [], [] )
 
         Nothing ->
-            state
+            ( state, [], [] )
 
 
 parse : Config datatype portdatatype msg -> datatype -> SocketState datatype msg -> ( SocketState datatype msg, List (Protocol.Operation datatype) )
@@ -464,10 +504,10 @@ handleTimeouts time state =
             state.nextSubscriptions
                 |> Dict.foldl
                     (\key sub ( d, msg ) ->
-                        case sub.subType of
-                            Req { deadline, onTimeout } ->
+                        case ( sub.state, sub.subType ) of
+                            ( SubscriptionActive, Req { deadline, onTimeout } ) ->
                                 if deadline < time then
-                                    ( Dict.insert key { sub | subType = Closed } d
+                                    ( Dict.insert key { sub | state = SubscriptionTimeout } d
                                     , onTimeout (Time.millisToPosix time) :: msg
                                     )
 
@@ -576,19 +616,21 @@ receiveOperation cfg operation state =
                 Just sub ->
                     let
                         ( msgList, continue ) =
-                            case sub.subType of
-                                Req { onMessage } ->
-                                    onMessage message
-                                        |> Tuple.mapFirst
-                                            (Maybe.map List.singleton
-                                                >> Maybe.withDefault []
-                                            )
+                            case sub.state of
+                                SubscriptionActive ->
+                                    case sub.subType of
+                                        Req { onMessage } ->
+                                            onMessage message
+                                                |> Tuple.mapFirst
+                                                    (Maybe.map List.singleton
+                                                        >> Maybe.withDefault []
+                                                    )
 
-                                Closed ->
+                                        Sub handlers ->
+                                            ( handlers |> List.map (\onMsg -> onMsg message), True )
+
+                                _ ->
                                     ( [], False )
-
-                                Sub handlers ->
-                                    ( handlers |> List.map (\onMsg -> onMsg message), True )
 
                         nextState : SocketState datatype msg
                         nextState =
@@ -619,7 +661,7 @@ receiveOperation cfg operation state =
                             else
                                 let
                                     newSub =
-                                        { sub | subType = Closed }
+                                        { sub | state = SubscriptionClosed }
 
                                     newKey =
                                         subscriptionKey newSub

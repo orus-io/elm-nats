@@ -437,12 +437,15 @@ toCmd (Types.Config cfg) effect ((State state) as oState) =
                                     s
                                     (\socket ->
                                         let
-                                            newSocket =
+                                            ( newSocket, msgs, ops ) =
                                                 SocketState.cancelRequest marker socket
                                         in
                                         ( Just newSocket
-                                        , []
-                                        , Cmd.none
+                                        , msgs
+                                        , ops
+                                            |> List.map
+                                                (operationToCmd (Types.Config cfg) socket.socket.id)
+                                            |> Cmd.batch
                                         )
                                     )
                     in
@@ -503,8 +506,30 @@ handleSub (Types.Config cfg) (Sub subList) state =
                 |> Tuple.mapSecond
                     List.concat
 
-        ( finalSockets, closeCmds ) =
+        ( nextSockets, trackersCmds ) =
             sockets
+                |> SocketStateCollection.mapWithEffect
+                    (\socket ->
+                        let
+                            ( nextSocket, nextMsgs, nextOps ) =
+                                SocketState.finalizeTrackers socket
+                        in
+                        ( nextSocket
+                        , List.map
+                            (Task.succeed >> Task.perform identity)
+                            nextMsgs
+                            ++ List.map
+                                (operationToCmd (Types.Config cfg) socket.socket.id
+                                    >> Cmd.map cfg.parentMsg
+                                )
+                                nextOps
+                        )
+                    )
+                |> Tuple.mapSecond
+                    List.concat
+
+        ( finalSockets, closeCmds ) =
+            nextSockets
                 |> SocketStateCollection.toList
                 |> List.filter
                     (\socket ->
@@ -542,6 +567,7 @@ handleSub (Types.Config cfg) (Sub subList) state =
     , cmds
         ++ opsCmds
         ++ closeCmds
+        ++ trackersCmds
         |> Cmd.batch
     )
 
@@ -669,8 +695,8 @@ activeRequests (State state) =
                 socket.activeSubscriptions
                     |> List.filterMap
                         (\sub ->
-                            case sub.subType of
-                                SocketState.Req { subject, marker } ->
+                            case ( sub.state, sub.subType ) of
+                                ( SocketState.SubscriptionActive, SocketState.Req { subject, marker } ) ->
                                     Just
                                         { sid = socket.socket.id
                                         , id = sub.id
