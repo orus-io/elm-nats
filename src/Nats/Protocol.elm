@@ -457,6 +457,7 @@ parseBytes partialOp data =
 
                         Just (Ok cmd) ->
                             let
+                                tail : Bytes
                                 tail =
                                     bytesDropLeft (index + 2) data
                             in
@@ -706,9 +707,11 @@ crBytes =
 bytesDropLeft : Int -> Bytes -> Bytes
 bytesDropLeft size data =
     let
+        totalSize : Int
         totalSize =
             Bytes.width data
 
+        firstSize : Int
         firstSize =
             if size < totalSize then
                 size
@@ -728,9 +731,11 @@ bytesDropLeft size data =
 bytesLeft : Int -> Bytes -> Bytes
 bytesLeft size data =
     let
+        totalSize : Int
         totalSize =
             Bytes.width data
 
+        firstSize : Int
         firstSize =
             if size < totalSize then
                 size
@@ -750,9 +755,11 @@ bytesLeft size data =
 bytesDropRight : Int -> Bytes -> Bytes
 bytesDropRight size data =
     let
+        totalSize : Int
         totalSize =
             Bytes.width data
 
+        secondSize : Int
         secondSize =
             if size < totalSize then
                 size

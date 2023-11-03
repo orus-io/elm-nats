@@ -7657,9 +7657,10 @@ var $author$project$Nats$Internal$SocketState$getSubscriptionByID = F2(
 					$elm$core$Basics$eq(id)),
 				state.activeSubscriptions));
 	});
-var $author$project$Nats$Internal$SocketState$isRequest = function (sub) {
-	var _v0 = sub.subType;
-	if (_v0.$ === 'Req') {
+var $author$project$Nats$Internal$SocketState$isActiveRequest = function (sub) {
+	var _v0 = _Utils_Tuple2(sub.state, sub.subType);
+	if ((_v0.a.$ === 'SubscriptionActive') && (_v0.b.$ === 'Req')) {
+		var _v1 = _v0.a;
 		return true;
 	} else {
 		return false;
@@ -7687,7 +7688,7 @@ var $author$project$Nats$Internal$SocketState$finalizeSubscriptions = function (
 					nextSubscriptions: A2(
 						$elm$core$Dict$filter,
 						function (_v1) {
-							return $author$project$Nats$Internal$SocketState$isRequest;
+							return $author$project$Nats$Internal$SocketState$isActiveRequest;
 						},
 						state.nextSubscriptions)
 				}),
@@ -7707,29 +7708,529 @@ var $author$project$Nats$Internal$SocketState$finalizeSubscriptions = function (
 				A2(
 					$elm$core$List$filterMap,
 					function (sub) {
-						var _v3 = $elm$core$List$head(
-							A2(
-								$elm$core$List$filter,
-								function (next) {
-									return _Utils_eq(next.id, sub.id);
-								},
-								nextSubscriptions));
-						if (_v3.$ === 'Nothing') {
-							return $elm$core$Maybe$Just(
-								A2($author$project$Nats$Protocol$UNSUB, sub.id, 0));
-						} else {
-							return $elm$core$Maybe$Nothing;
+						var _v3 = _Utils_Tuple2(
+							sub.state,
+							$elm$core$List$head(
+								A2(
+									$elm$core$List$filter,
+									function (next) {
+										return _Utils_eq(next.id, sub.id);
+									},
+									nextSubscriptions)));
+						_v3$0:
+						while (true) {
+							if (_v3.b.$ === 'Just') {
+								if (_v3.a.$ === 'SubscriptionCanceled') {
+									break _v3$0;
+								} else {
+									return $elm$core$Maybe$Nothing;
+								}
+							} else {
+								if (_v3.a.$ === 'SubscriptionCanceled') {
+									break _v3$0;
+								} else {
+									var _v5 = _v3.b;
+									return $elm$core$Maybe$Just(
+										A2($author$project$Nats$Protocol$UNSUB, sub.id, 0));
+								}
+							}
 						}
+						var _v4 = _v3.a;
+						return $elm$core$Maybe$Nothing;
 					},
 					state.activeSubscriptions)));
 	} else {
 		return _Utils_Tuple2(state, _List_Nil);
 	}
 };
+var $author$project$Nats$Events$RequestCancel = function (a) {
+	return {$: 'RequestCancel', a: a};
+};
+var $author$project$Nats$Internal$SocketState$SubscriptionCanceled = {$: 'SubscriptionCanceled'};
+var $author$project$Nats$Internal$SocketState$getSubscriptionByMarker = F2(
+	function (reqMarker, state) {
+		return $elm$core$List$head(
+			A2(
+				$elm$core$List$filter,
+				function (sub) {
+					var _v0 = sub.subType;
+					if (_v0.$ === 'Req') {
+						var marker = _v0.a.marker;
+						return _Utils_eq(
+							marker,
+							$elm$core$Maybe$Just(reqMarker));
+					} else {
+						return false;
+					}
+				},
+				state.activeSubscriptions));
+	});
+var $elm$core$Dict$getMin = function (dict) {
+	getMin:
+	while (true) {
+		if ((dict.$ === 'RBNode_elm_builtin') && (dict.d.$ === 'RBNode_elm_builtin')) {
+			var left = dict.d;
+			var $temp$dict = left;
+			dict = $temp$dict;
+			continue getMin;
+		} else {
+			return dict;
+		}
+	}
+};
+var $elm$core$Dict$moveRedLeft = function (dict) {
+	if (((dict.$ === 'RBNode_elm_builtin') && (dict.d.$ === 'RBNode_elm_builtin')) && (dict.e.$ === 'RBNode_elm_builtin')) {
+		if ((dict.e.d.$ === 'RBNode_elm_builtin') && (dict.e.d.a.$ === 'Red')) {
+			var clr = dict.a;
+			var k = dict.b;
+			var v = dict.c;
+			var _v1 = dict.d;
+			var lClr = _v1.a;
+			var lK = _v1.b;
+			var lV = _v1.c;
+			var lLeft = _v1.d;
+			var lRight = _v1.e;
+			var _v2 = dict.e;
+			var rClr = _v2.a;
+			var rK = _v2.b;
+			var rV = _v2.c;
+			var rLeft = _v2.d;
+			var _v3 = rLeft.a;
+			var rlK = rLeft.b;
+			var rlV = rLeft.c;
+			var rlL = rLeft.d;
+			var rlR = rLeft.e;
+			var rRight = _v2.e;
+			return A5(
+				$elm$core$Dict$RBNode_elm_builtin,
+				$elm$core$Dict$Red,
+				rlK,
+				rlV,
+				A5(
+					$elm$core$Dict$RBNode_elm_builtin,
+					$elm$core$Dict$Black,
+					k,
+					v,
+					A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Red, lK, lV, lLeft, lRight),
+					rlL),
+				A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Black, rK, rV, rlR, rRight));
+		} else {
+			var clr = dict.a;
+			var k = dict.b;
+			var v = dict.c;
+			var _v4 = dict.d;
+			var lClr = _v4.a;
+			var lK = _v4.b;
+			var lV = _v4.c;
+			var lLeft = _v4.d;
+			var lRight = _v4.e;
+			var _v5 = dict.e;
+			var rClr = _v5.a;
+			var rK = _v5.b;
+			var rV = _v5.c;
+			var rLeft = _v5.d;
+			var rRight = _v5.e;
+			if (clr.$ === 'Black') {
+				return A5(
+					$elm$core$Dict$RBNode_elm_builtin,
+					$elm$core$Dict$Black,
+					k,
+					v,
+					A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Red, lK, lV, lLeft, lRight),
+					A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Red, rK, rV, rLeft, rRight));
+			} else {
+				return A5(
+					$elm$core$Dict$RBNode_elm_builtin,
+					$elm$core$Dict$Black,
+					k,
+					v,
+					A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Red, lK, lV, lLeft, lRight),
+					A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Red, rK, rV, rLeft, rRight));
+			}
+		}
+	} else {
+		return dict;
+	}
+};
+var $elm$core$Dict$moveRedRight = function (dict) {
+	if (((dict.$ === 'RBNode_elm_builtin') && (dict.d.$ === 'RBNode_elm_builtin')) && (dict.e.$ === 'RBNode_elm_builtin')) {
+		if ((dict.d.d.$ === 'RBNode_elm_builtin') && (dict.d.d.a.$ === 'Red')) {
+			var clr = dict.a;
+			var k = dict.b;
+			var v = dict.c;
+			var _v1 = dict.d;
+			var lClr = _v1.a;
+			var lK = _v1.b;
+			var lV = _v1.c;
+			var _v2 = _v1.d;
+			var _v3 = _v2.a;
+			var llK = _v2.b;
+			var llV = _v2.c;
+			var llLeft = _v2.d;
+			var llRight = _v2.e;
+			var lRight = _v1.e;
+			var _v4 = dict.e;
+			var rClr = _v4.a;
+			var rK = _v4.b;
+			var rV = _v4.c;
+			var rLeft = _v4.d;
+			var rRight = _v4.e;
+			return A5(
+				$elm$core$Dict$RBNode_elm_builtin,
+				$elm$core$Dict$Red,
+				lK,
+				lV,
+				A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Black, llK, llV, llLeft, llRight),
+				A5(
+					$elm$core$Dict$RBNode_elm_builtin,
+					$elm$core$Dict$Black,
+					k,
+					v,
+					lRight,
+					A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Red, rK, rV, rLeft, rRight)));
+		} else {
+			var clr = dict.a;
+			var k = dict.b;
+			var v = dict.c;
+			var _v5 = dict.d;
+			var lClr = _v5.a;
+			var lK = _v5.b;
+			var lV = _v5.c;
+			var lLeft = _v5.d;
+			var lRight = _v5.e;
+			var _v6 = dict.e;
+			var rClr = _v6.a;
+			var rK = _v6.b;
+			var rV = _v6.c;
+			var rLeft = _v6.d;
+			var rRight = _v6.e;
+			if (clr.$ === 'Black') {
+				return A5(
+					$elm$core$Dict$RBNode_elm_builtin,
+					$elm$core$Dict$Black,
+					k,
+					v,
+					A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Red, lK, lV, lLeft, lRight),
+					A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Red, rK, rV, rLeft, rRight));
+			} else {
+				return A5(
+					$elm$core$Dict$RBNode_elm_builtin,
+					$elm$core$Dict$Black,
+					k,
+					v,
+					A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Red, lK, lV, lLeft, lRight),
+					A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Red, rK, rV, rLeft, rRight));
+			}
+		}
+	} else {
+		return dict;
+	}
+};
+var $elm$core$Dict$removeHelpPrepEQGT = F7(
+	function (targetKey, dict, color, key, value, left, right) {
+		if ((left.$ === 'RBNode_elm_builtin') && (left.a.$ === 'Red')) {
+			var _v1 = left.a;
+			var lK = left.b;
+			var lV = left.c;
+			var lLeft = left.d;
+			var lRight = left.e;
+			return A5(
+				$elm$core$Dict$RBNode_elm_builtin,
+				color,
+				lK,
+				lV,
+				lLeft,
+				A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Red, key, value, lRight, right));
+		} else {
+			_v2$2:
+			while (true) {
+				if ((right.$ === 'RBNode_elm_builtin') && (right.a.$ === 'Black')) {
+					if (right.d.$ === 'RBNode_elm_builtin') {
+						if (right.d.a.$ === 'Black') {
+							var _v3 = right.a;
+							var _v4 = right.d;
+							var _v5 = _v4.a;
+							return $elm$core$Dict$moveRedRight(dict);
+						} else {
+							break _v2$2;
+						}
+					} else {
+						var _v6 = right.a;
+						var _v7 = right.d;
+						return $elm$core$Dict$moveRedRight(dict);
+					}
+				} else {
+					break _v2$2;
+				}
+			}
+			return dict;
+		}
+	});
+var $elm$core$Dict$removeMin = function (dict) {
+	if ((dict.$ === 'RBNode_elm_builtin') && (dict.d.$ === 'RBNode_elm_builtin')) {
+		var color = dict.a;
+		var key = dict.b;
+		var value = dict.c;
+		var left = dict.d;
+		var lColor = left.a;
+		var lLeft = left.d;
+		var right = dict.e;
+		if (lColor.$ === 'Black') {
+			if ((lLeft.$ === 'RBNode_elm_builtin') && (lLeft.a.$ === 'Red')) {
+				var _v3 = lLeft.a;
+				return A5(
+					$elm$core$Dict$RBNode_elm_builtin,
+					color,
+					key,
+					value,
+					$elm$core$Dict$removeMin(left),
+					right);
+			} else {
+				var _v4 = $elm$core$Dict$moveRedLeft(dict);
+				if (_v4.$ === 'RBNode_elm_builtin') {
+					var nColor = _v4.a;
+					var nKey = _v4.b;
+					var nValue = _v4.c;
+					var nLeft = _v4.d;
+					var nRight = _v4.e;
+					return A5(
+						$elm$core$Dict$balance,
+						nColor,
+						nKey,
+						nValue,
+						$elm$core$Dict$removeMin(nLeft),
+						nRight);
+				} else {
+					return $elm$core$Dict$RBEmpty_elm_builtin;
+				}
+			}
+		} else {
+			return A5(
+				$elm$core$Dict$RBNode_elm_builtin,
+				color,
+				key,
+				value,
+				$elm$core$Dict$removeMin(left),
+				right);
+		}
+	} else {
+		return $elm$core$Dict$RBEmpty_elm_builtin;
+	}
+};
+var $elm$core$Dict$removeHelp = F2(
+	function (targetKey, dict) {
+		if (dict.$ === 'RBEmpty_elm_builtin') {
+			return $elm$core$Dict$RBEmpty_elm_builtin;
+		} else {
+			var color = dict.a;
+			var key = dict.b;
+			var value = dict.c;
+			var left = dict.d;
+			var right = dict.e;
+			if (_Utils_cmp(targetKey, key) < 0) {
+				if ((left.$ === 'RBNode_elm_builtin') && (left.a.$ === 'Black')) {
+					var _v4 = left.a;
+					var lLeft = left.d;
+					if ((lLeft.$ === 'RBNode_elm_builtin') && (lLeft.a.$ === 'Red')) {
+						var _v6 = lLeft.a;
+						return A5(
+							$elm$core$Dict$RBNode_elm_builtin,
+							color,
+							key,
+							value,
+							A2($elm$core$Dict$removeHelp, targetKey, left),
+							right);
+					} else {
+						var _v7 = $elm$core$Dict$moveRedLeft(dict);
+						if (_v7.$ === 'RBNode_elm_builtin') {
+							var nColor = _v7.a;
+							var nKey = _v7.b;
+							var nValue = _v7.c;
+							var nLeft = _v7.d;
+							var nRight = _v7.e;
+							return A5(
+								$elm$core$Dict$balance,
+								nColor,
+								nKey,
+								nValue,
+								A2($elm$core$Dict$removeHelp, targetKey, nLeft),
+								nRight);
+						} else {
+							return $elm$core$Dict$RBEmpty_elm_builtin;
+						}
+					}
+				} else {
+					return A5(
+						$elm$core$Dict$RBNode_elm_builtin,
+						color,
+						key,
+						value,
+						A2($elm$core$Dict$removeHelp, targetKey, left),
+						right);
+				}
+			} else {
+				return A2(
+					$elm$core$Dict$removeHelpEQGT,
+					targetKey,
+					A7($elm$core$Dict$removeHelpPrepEQGT, targetKey, dict, color, key, value, left, right));
+			}
+		}
+	});
+var $elm$core$Dict$removeHelpEQGT = F2(
+	function (targetKey, dict) {
+		if (dict.$ === 'RBNode_elm_builtin') {
+			var color = dict.a;
+			var key = dict.b;
+			var value = dict.c;
+			var left = dict.d;
+			var right = dict.e;
+			if (_Utils_eq(targetKey, key)) {
+				var _v1 = $elm$core$Dict$getMin(right);
+				if (_v1.$ === 'RBNode_elm_builtin') {
+					var minKey = _v1.b;
+					var minValue = _v1.c;
+					return A5(
+						$elm$core$Dict$balance,
+						color,
+						minKey,
+						minValue,
+						left,
+						$elm$core$Dict$removeMin(right));
+				} else {
+					return $elm$core$Dict$RBEmpty_elm_builtin;
+				}
+			} else {
+				return A5(
+					$elm$core$Dict$balance,
+					color,
+					key,
+					value,
+					left,
+					A2($elm$core$Dict$removeHelp, targetKey, right));
+			}
+		} else {
+			return $elm$core$Dict$RBEmpty_elm_builtin;
+		}
+	});
+var $elm$core$Dict$remove = F2(
+	function (key, dict) {
+		var _v0 = A2($elm$core$Dict$removeHelp, key, dict);
+		if ((_v0.$ === 'RBNode_elm_builtin') && (_v0.a.$ === 'Red')) {
+			var _v1 = _v0.a;
+			var k = _v0.b;
+			var v = _v0.c;
+			var l = _v0.d;
+			var r = _v0.e;
+			return A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Black, k, v, l, r);
+		} else {
+			var x = _v0;
+			return x;
+		}
+	});
+var $author$project$Nats$Internal$SocketState$subTypeKey = function (subType) {
+	if (subType.$ === 'Sub') {
+		return 'sub';
+	} else {
+		return 'req';
+	}
+};
+var $author$project$Nats$Internal$SocketState$subscriptionKey = function (sub) {
+	return _Utils_Tuple3(
+		$author$project$Nats$Internal$SocketState$subTypeKey(sub.subType),
+		sub.subject,
+		sub.group);
+};
+var $author$project$Nats$Internal$SocketState$cancelRequest = F2(
+	function (marker, state) {
+		var _v0 = A2($author$project$Nats$Internal$SocketState$getSubscriptionByMarker, marker, state);
+		if (_v0.$ === 'Just') {
+			var sub = _v0.a;
+			var _v1 = sub.subType;
+			if (_v1.$ === 'Req') {
+				var request = _v1.a;
+				var newSub = _Utils_update(
+					sub,
+					{state: $author$project$Nats$Internal$SocketState$SubscriptionCanceled});
+				var newKey = $author$project$Nats$Internal$SocketState$subscriptionKey(newSub);
+				var key = $author$project$Nats$Internal$SocketState$subscriptionKey(sub);
+				return _Utils_Tuple3(
+					_Utils_update(
+						state,
+						{
+							nextSubscriptions: A3(
+								$elm$core$Dict$insert,
+								newKey,
+								newSub,
+								A2($elm$core$Dict$remove, key, state.nextSubscriptions))
+						}),
+					_List_fromArray(
+						[
+							state.onEvent(
+							$author$project$Nats$Events$RequestCancel(
+								{id: sub.id, inbox: sub.subject, marker: request.marker, sid: state.socket.id, subject: request.subject}))
+						]),
+					_List_fromArray(
+						[
+							A2($author$project$Nats$Protocol$UNSUB, sub.id, 0)
+						]));
+			} else {
+				return _Utils_Tuple3(state, _List_Nil, _List_Nil);
+			}
+		} else {
+			return _Utils_Tuple3(state, _List_Nil, _List_Nil);
+		}
+	});
+var $elm$core$List$isEmpty = function (xs) {
+	if (!xs.b) {
+		return true;
+	} else {
+		return false;
+	}
+};
+var $author$project$Nats$Internal$SocketState$finalizeTrackers = function (state) {
+	var _v0 = state.status;
+	if (_v0.$ === 'Connected') {
+		return A3(
+			$elm$core$List$foldl,
+			F2(
+				function (marker, _v1) {
+					var st = _v1.a;
+					var msgs = _v1.b;
+					var ops = _v1.c;
+					var _v2 = A2($author$project$Nats$Internal$SocketState$cancelRequest, marker, st);
+					var nextSt = _v2.a;
+					var nextMsgs = _v2.b;
+					var nextOps = _v2.c;
+					return _Utils_Tuple3(
+						nextSt,
+						_Utils_ap(msgs, nextMsgs),
+						_Utils_ap(nextOps, ops));
+				}),
+			_Utils_Tuple3(
+				_Utils_update(
+					state,
+					{activeTrackers: state.nextTrackers, nextTrackers: _List_Nil}),
+				_List_Nil,
+				_List_Nil),
+			A2(
+				$elm$core$List$filter,
+				function (marker) {
+					return $elm$core$List$isEmpty(
+						A2(
+							$elm$core$List$filter,
+							$elm$core$Basics$eq(marker),
+							state.nextTrackers));
+				},
+				state.activeTrackers));
+	} else {
+		return _Utils_Tuple3(state, _List_Nil, _List_Nil);
+	}
+};
 var $author$project$Nats$Internal$SocketStateCollection$fromList = $author$project$Nats$Internal$SocketStateCollection$SocketStateCollection;
 var $author$project$Nats$Internal$SocketState$Sub = function (a) {
 	return {$: 'Sub', a: a};
 };
+var $author$project$Nats$Internal$SocketState$SubscriptionActive = {$: 'SubscriptionActive'};
 var $author$project$Nats$Internal$SocketState$getSubscriptionBySubjectGroup = F2(
 	function (_v0, state) {
 		var subject = _v0.a;
@@ -7746,16 +8247,6 @@ var $author$project$Nats$Internal$SocketState$getSubscriptionBySubjectGroup = F2
 	});
 var $author$project$Nats$Internal$SocketState$nextID = function (state) {
 	return state.lastSubID + 1;
-};
-var $author$project$Nats$Internal$SocketState$subTypeKey = function (subType) {
-	switch (subType.$) {
-		case 'Closed':
-			return 'closed';
-		case 'Sub':
-			return 'sub';
-		default:
-			return 'req';
-	}
 };
 var $author$project$Nats$Internal$SocketState$subTypeMerge = F2(
 	function (sub1, sub2) {
@@ -7816,7 +8307,7 @@ var $author$project$Nats$Internal$SocketState$addSubscriptionHelper = F4(
 					nextSubscriptions: A3(
 						$elm$core$Dict$insert,
 						key,
-						{group: group, id: subID, subType: subType, subject: subject},
+						{group: group, id: subID, state: $author$project$Nats$Internal$SocketState$SubscriptionActive, subType: subType, subject: subject},
 						state.nextSubscriptions)
 				});
 		}
@@ -8224,7 +8715,7 @@ var $author$project$Nats$Internal$Ports$close = function (sid) {
 		send: $elm$core$Maybe$Nothing
 	};
 };
-var $author$project$Nats$Internal$SocketState$Closed = {$: 'Closed'};
+var $author$project$Nats$Internal$SocketState$SubscriptionTimeout = {$: 'SubscriptionTimeout'};
 var $author$project$Nats$Internal$SocketState$handleTimeouts = F2(
 	function (time, state) {
 		var _v0 = A3(
@@ -8233,17 +8724,18 @@ var $author$project$Nats$Internal$SocketState$handleTimeouts = F2(
 				function (key, sub, _v1) {
 					var d = _v1.a;
 					var msg = _v1.b;
-					var _v2 = sub.subType;
-					if (_v2.$ === 'Req') {
-						var onTimeout = _v2.a.onTimeout;
-						var deadline = _v2.a.deadline;
+					var _v2 = _Utils_Tuple2(sub.state, sub.subType);
+					if ((_v2.a.$ === 'SubscriptionActive') && (_v2.b.$ === 'Req')) {
+						var _v3 = _v2.a;
+						var onTimeout = _v2.b.a.onTimeout;
+						var deadline = _v2.b.a.deadline;
 						return (_Utils_cmp(deadline, time) < 0) ? _Utils_Tuple2(
 							A3(
 								$elm$core$Dict$insert,
 								key,
 								_Utils_update(
 									sub,
-									{subType: $author$project$Nats$Internal$SocketState$Closed}),
+									{state: $author$project$Nats$Internal$SocketState$SubscriptionTimeout}),
 								d),
 							A2(
 								$elm$core$List$cons,
@@ -8300,6 +8792,7 @@ var $author$project$Nats$Socket$Connecting = {$: 'Connecting'};
 var $author$project$Nats$Internal$SocketState$Req = function (a) {
 	return {$: 'Req', a: a};
 };
+var $author$project$Nats$Internal$SocketState$SubscriptionClosed = {$: 'SubscriptionClosed'};
 var $author$project$Nats$Internal$SocketState$operationToPortCommand = F3(
 	function (_v0, sid, op) {
 		var ncfg = _v0.a;
@@ -8317,377 +8810,9 @@ var $author$project$Nats$Internal$SocketState$operationToPortCommand = F3(
 				sid: sid
 			});
 	});
-var $elm$core$Dict$getMin = function (dict) {
-	getMin:
-	while (true) {
-		if ((dict.$ === 'RBNode_elm_builtin') && (dict.d.$ === 'RBNode_elm_builtin')) {
-			var left = dict.d;
-			var $temp$dict = left;
-			dict = $temp$dict;
-			continue getMin;
-		} else {
-			return dict;
-		}
-	}
-};
-var $elm$core$Dict$moveRedLeft = function (dict) {
-	if (((dict.$ === 'RBNode_elm_builtin') && (dict.d.$ === 'RBNode_elm_builtin')) && (dict.e.$ === 'RBNode_elm_builtin')) {
-		if ((dict.e.d.$ === 'RBNode_elm_builtin') && (dict.e.d.a.$ === 'Red')) {
-			var clr = dict.a;
-			var k = dict.b;
-			var v = dict.c;
-			var _v1 = dict.d;
-			var lClr = _v1.a;
-			var lK = _v1.b;
-			var lV = _v1.c;
-			var lLeft = _v1.d;
-			var lRight = _v1.e;
-			var _v2 = dict.e;
-			var rClr = _v2.a;
-			var rK = _v2.b;
-			var rV = _v2.c;
-			var rLeft = _v2.d;
-			var _v3 = rLeft.a;
-			var rlK = rLeft.b;
-			var rlV = rLeft.c;
-			var rlL = rLeft.d;
-			var rlR = rLeft.e;
-			var rRight = _v2.e;
-			return A5(
-				$elm$core$Dict$RBNode_elm_builtin,
-				$elm$core$Dict$Red,
-				rlK,
-				rlV,
-				A5(
-					$elm$core$Dict$RBNode_elm_builtin,
-					$elm$core$Dict$Black,
-					k,
-					v,
-					A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Red, lK, lV, lLeft, lRight),
-					rlL),
-				A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Black, rK, rV, rlR, rRight));
-		} else {
-			var clr = dict.a;
-			var k = dict.b;
-			var v = dict.c;
-			var _v4 = dict.d;
-			var lClr = _v4.a;
-			var lK = _v4.b;
-			var lV = _v4.c;
-			var lLeft = _v4.d;
-			var lRight = _v4.e;
-			var _v5 = dict.e;
-			var rClr = _v5.a;
-			var rK = _v5.b;
-			var rV = _v5.c;
-			var rLeft = _v5.d;
-			var rRight = _v5.e;
-			if (clr.$ === 'Black') {
-				return A5(
-					$elm$core$Dict$RBNode_elm_builtin,
-					$elm$core$Dict$Black,
-					k,
-					v,
-					A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Red, lK, lV, lLeft, lRight),
-					A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Red, rK, rV, rLeft, rRight));
-			} else {
-				return A5(
-					$elm$core$Dict$RBNode_elm_builtin,
-					$elm$core$Dict$Black,
-					k,
-					v,
-					A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Red, lK, lV, lLeft, lRight),
-					A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Red, rK, rV, rLeft, rRight));
-			}
-		}
-	} else {
-		return dict;
-	}
-};
-var $elm$core$Dict$moveRedRight = function (dict) {
-	if (((dict.$ === 'RBNode_elm_builtin') && (dict.d.$ === 'RBNode_elm_builtin')) && (dict.e.$ === 'RBNode_elm_builtin')) {
-		if ((dict.d.d.$ === 'RBNode_elm_builtin') && (dict.d.d.a.$ === 'Red')) {
-			var clr = dict.a;
-			var k = dict.b;
-			var v = dict.c;
-			var _v1 = dict.d;
-			var lClr = _v1.a;
-			var lK = _v1.b;
-			var lV = _v1.c;
-			var _v2 = _v1.d;
-			var _v3 = _v2.a;
-			var llK = _v2.b;
-			var llV = _v2.c;
-			var llLeft = _v2.d;
-			var llRight = _v2.e;
-			var lRight = _v1.e;
-			var _v4 = dict.e;
-			var rClr = _v4.a;
-			var rK = _v4.b;
-			var rV = _v4.c;
-			var rLeft = _v4.d;
-			var rRight = _v4.e;
-			return A5(
-				$elm$core$Dict$RBNode_elm_builtin,
-				$elm$core$Dict$Red,
-				lK,
-				lV,
-				A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Black, llK, llV, llLeft, llRight),
-				A5(
-					$elm$core$Dict$RBNode_elm_builtin,
-					$elm$core$Dict$Black,
-					k,
-					v,
-					lRight,
-					A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Red, rK, rV, rLeft, rRight)));
-		} else {
-			var clr = dict.a;
-			var k = dict.b;
-			var v = dict.c;
-			var _v5 = dict.d;
-			var lClr = _v5.a;
-			var lK = _v5.b;
-			var lV = _v5.c;
-			var lLeft = _v5.d;
-			var lRight = _v5.e;
-			var _v6 = dict.e;
-			var rClr = _v6.a;
-			var rK = _v6.b;
-			var rV = _v6.c;
-			var rLeft = _v6.d;
-			var rRight = _v6.e;
-			if (clr.$ === 'Black') {
-				return A5(
-					$elm$core$Dict$RBNode_elm_builtin,
-					$elm$core$Dict$Black,
-					k,
-					v,
-					A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Red, lK, lV, lLeft, lRight),
-					A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Red, rK, rV, rLeft, rRight));
-			} else {
-				return A5(
-					$elm$core$Dict$RBNode_elm_builtin,
-					$elm$core$Dict$Black,
-					k,
-					v,
-					A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Red, lK, lV, lLeft, lRight),
-					A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Red, rK, rV, rLeft, rRight));
-			}
-		}
-	} else {
-		return dict;
-	}
-};
-var $elm$core$Dict$removeHelpPrepEQGT = F7(
-	function (targetKey, dict, color, key, value, left, right) {
-		if ((left.$ === 'RBNode_elm_builtin') && (left.a.$ === 'Red')) {
-			var _v1 = left.a;
-			var lK = left.b;
-			var lV = left.c;
-			var lLeft = left.d;
-			var lRight = left.e;
-			return A5(
-				$elm$core$Dict$RBNode_elm_builtin,
-				color,
-				lK,
-				lV,
-				lLeft,
-				A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Red, key, value, lRight, right));
-		} else {
-			_v2$2:
-			while (true) {
-				if ((right.$ === 'RBNode_elm_builtin') && (right.a.$ === 'Black')) {
-					if (right.d.$ === 'RBNode_elm_builtin') {
-						if (right.d.a.$ === 'Black') {
-							var _v3 = right.a;
-							var _v4 = right.d;
-							var _v5 = _v4.a;
-							return $elm$core$Dict$moveRedRight(dict);
-						} else {
-							break _v2$2;
-						}
-					} else {
-						var _v6 = right.a;
-						var _v7 = right.d;
-						return $elm$core$Dict$moveRedRight(dict);
-					}
-				} else {
-					break _v2$2;
-				}
-			}
-			return dict;
-		}
-	});
-var $elm$core$Dict$removeMin = function (dict) {
-	if ((dict.$ === 'RBNode_elm_builtin') && (dict.d.$ === 'RBNode_elm_builtin')) {
-		var color = dict.a;
-		var key = dict.b;
-		var value = dict.c;
-		var left = dict.d;
-		var lColor = left.a;
-		var lLeft = left.d;
-		var right = dict.e;
-		if (lColor.$ === 'Black') {
-			if ((lLeft.$ === 'RBNode_elm_builtin') && (lLeft.a.$ === 'Red')) {
-				var _v3 = lLeft.a;
-				return A5(
-					$elm$core$Dict$RBNode_elm_builtin,
-					color,
-					key,
-					value,
-					$elm$core$Dict$removeMin(left),
-					right);
-			} else {
-				var _v4 = $elm$core$Dict$moveRedLeft(dict);
-				if (_v4.$ === 'RBNode_elm_builtin') {
-					var nColor = _v4.a;
-					var nKey = _v4.b;
-					var nValue = _v4.c;
-					var nLeft = _v4.d;
-					var nRight = _v4.e;
-					return A5(
-						$elm$core$Dict$balance,
-						nColor,
-						nKey,
-						nValue,
-						$elm$core$Dict$removeMin(nLeft),
-						nRight);
-				} else {
-					return $elm$core$Dict$RBEmpty_elm_builtin;
-				}
-			}
-		} else {
-			return A5(
-				$elm$core$Dict$RBNode_elm_builtin,
-				color,
-				key,
-				value,
-				$elm$core$Dict$removeMin(left),
-				right);
-		}
-	} else {
-		return $elm$core$Dict$RBEmpty_elm_builtin;
-	}
-};
-var $elm$core$Dict$removeHelp = F2(
-	function (targetKey, dict) {
-		if (dict.$ === 'RBEmpty_elm_builtin') {
-			return $elm$core$Dict$RBEmpty_elm_builtin;
-		} else {
-			var color = dict.a;
-			var key = dict.b;
-			var value = dict.c;
-			var left = dict.d;
-			var right = dict.e;
-			if (_Utils_cmp(targetKey, key) < 0) {
-				if ((left.$ === 'RBNode_elm_builtin') && (left.a.$ === 'Black')) {
-					var _v4 = left.a;
-					var lLeft = left.d;
-					if ((lLeft.$ === 'RBNode_elm_builtin') && (lLeft.a.$ === 'Red')) {
-						var _v6 = lLeft.a;
-						return A5(
-							$elm$core$Dict$RBNode_elm_builtin,
-							color,
-							key,
-							value,
-							A2($elm$core$Dict$removeHelp, targetKey, left),
-							right);
-					} else {
-						var _v7 = $elm$core$Dict$moveRedLeft(dict);
-						if (_v7.$ === 'RBNode_elm_builtin') {
-							var nColor = _v7.a;
-							var nKey = _v7.b;
-							var nValue = _v7.c;
-							var nLeft = _v7.d;
-							var nRight = _v7.e;
-							return A5(
-								$elm$core$Dict$balance,
-								nColor,
-								nKey,
-								nValue,
-								A2($elm$core$Dict$removeHelp, targetKey, nLeft),
-								nRight);
-						} else {
-							return $elm$core$Dict$RBEmpty_elm_builtin;
-						}
-					}
-				} else {
-					return A5(
-						$elm$core$Dict$RBNode_elm_builtin,
-						color,
-						key,
-						value,
-						A2($elm$core$Dict$removeHelp, targetKey, left),
-						right);
-				}
-			} else {
-				return A2(
-					$elm$core$Dict$removeHelpEQGT,
-					targetKey,
-					A7($elm$core$Dict$removeHelpPrepEQGT, targetKey, dict, color, key, value, left, right));
-			}
-		}
-	});
-var $elm$core$Dict$removeHelpEQGT = F2(
-	function (targetKey, dict) {
-		if (dict.$ === 'RBNode_elm_builtin') {
-			var color = dict.a;
-			var key = dict.b;
-			var value = dict.c;
-			var left = dict.d;
-			var right = dict.e;
-			if (_Utils_eq(targetKey, key)) {
-				var _v1 = $elm$core$Dict$getMin(right);
-				if (_v1.$ === 'RBNode_elm_builtin') {
-					var minKey = _v1.b;
-					var minValue = _v1.c;
-					return A5(
-						$elm$core$Dict$balance,
-						color,
-						minKey,
-						minValue,
-						left,
-						$elm$core$Dict$removeMin(right));
-				} else {
-					return $elm$core$Dict$RBEmpty_elm_builtin;
-				}
-			} else {
-				return A5(
-					$elm$core$Dict$balance,
-					color,
-					key,
-					value,
-					left,
-					A2($elm$core$Dict$removeHelp, targetKey, right));
-			}
-		} else {
-			return $elm$core$Dict$RBEmpty_elm_builtin;
-		}
-	});
-var $elm$core$Dict$remove = F2(
-	function (key, dict) {
-		var _v0 = A2($elm$core$Dict$removeHelp, key, dict);
-		if ((_v0.$ === 'RBNode_elm_builtin') && (_v0.a.$ === 'Red')) {
-			var _v1 = _v0.a;
-			var k = _v0.b;
-			var v = _v0.c;
-			var l = _v0.d;
-			var r = _v0.e;
-			return A5($elm$core$Dict$RBNode_elm_builtin, $elm$core$Dict$Black, k, v, l, r);
-		} else {
-			var x = _v0;
-			return x;
-		}
-	});
 var $elm$core$List$singleton = function (value) {
 	return _List_fromArray(
 		[value]);
-};
-var $author$project$Nats$Internal$SocketState$subscriptionKey = function (sub) {
-	return _Utils_Tuple3(
-		$author$project$Nats$Internal$SocketState$subTypeKey(sub.subType),
-		sub.subject,
-		sub.group);
 };
 var $author$project$Nats$Internal$SocketState$receiveOperation = F3(
 	function (cfg, operation, state) {
@@ -8733,10 +8858,11 @@ var $author$project$Nats$Internal$SocketState$receiveOperation = F3(
 				} else {
 					var sub = _v1.a;
 					var _v2 = function () {
-						var _v3 = sub.subType;
-						switch (_v3.$) {
-							case 'Req':
-								var onMessage = _v3.a.onMessage;
+						var _v3 = sub.state;
+						if (_v3.$ === 'SubscriptionActive') {
+							var _v4 = sub.subType;
+							if (_v4.$ === 'Req') {
+								var onMessage = _v4.a.onMessage;
 								return A2(
 									$elm$core$Tuple$mapFirst,
 									A2(
@@ -8744,10 +8870,8 @@ var $author$project$Nats$Internal$SocketState$receiveOperation = F3(
 										$elm$core$Maybe$map($elm$core$List$singleton),
 										$elm$core$Maybe$withDefault(_List_Nil)),
 									onMessage(message));
-							case 'Closed':
-								return _Utils_Tuple2(_List_Nil, false);
-							default:
-								var handlers = _v3.a;
+							} else {
+								var handlers = _v4.a;
 								return _Utils_Tuple2(
 									A2(
 										$elm$core$List$map,
@@ -8756,6 +8880,9 @@ var $author$project$Nats$Internal$SocketState$receiveOperation = F3(
 										},
 										handlers),
 									true);
+							}
+						} else {
+							return _Utils_Tuple2(_List_Nil, false);
 						}
 					}();
 					var msgList = _v2.a;
@@ -8763,9 +8890,9 @@ var $author$project$Nats$Internal$SocketState$receiveOperation = F3(
 					var nextState = function () {
 						var key = $author$project$Nats$Internal$SocketState$subscriptionKey(sub);
 						if (_continue) {
-							var _v4 = sub.subType;
-							if (_v4.$ === 'Req') {
-								var req = _v4.a;
+							var _v5 = sub.subType;
+							if (_v5.$ === 'Req') {
+								var req = _v5.a;
 								return _Utils_update(
 									state,
 									{
@@ -8788,7 +8915,7 @@ var $author$project$Nats$Internal$SocketState$receiveOperation = F3(
 						} else {
 							var newSub = _Utils_update(
 								sub,
-								{subType: $author$project$Nats$Internal$SocketState$Closed});
+								{state: $author$project$Nats$Internal$SocketState$SubscriptionClosed});
 							var newKey = $author$project$Nats$Internal$SocketState$subscriptionKey(newSub);
 							return _Utils_update(
 								state,
@@ -8971,6 +9098,40 @@ var $author$project$Nats$handleSub = F3(
 		var opsCmds = _v6.b;
 		var _v7 = A2(
 			$elm$core$Tuple$mapSecond,
+			$elm$core$List$concat,
+			A2(
+				$author$project$Nats$Internal$SocketStateCollection$mapWithEffect,
+				function (socket) {
+					var _v8 = $author$project$Nats$Internal$SocketState$finalizeTrackers(socket);
+					var nextSocket = _v8.a;
+					var nextMsgs = _v8.b;
+					var nextOps = _v8.c;
+					return _Utils_Tuple2(
+						nextSocket,
+						_Utils_ap(
+							A2(
+								$elm$core$List$map,
+								A2(
+									$elm$core$Basics$composeR,
+									$elm$core$Task$succeed,
+									$elm$core$Task$perform($elm$core$Basics$identity)),
+								nextMsgs),
+							A2(
+								$elm$core$List$map,
+								A2(
+									$elm$core$Basics$composeR,
+									A2(
+										$author$project$Nats$operationToCmd,
+										$author$project$Nats$Internal$Types$Config(cfg),
+										socket.socket.id),
+									$elm$core$Platform$Cmd$map(cfg.parentMsg)),
+								nextOps)));
+				},
+				sockets));
+		var nextSockets = _v7.a;
+		var trackersCmds = _v7.b;
+		var _v9 = A2(
+			$elm$core$Tuple$mapSecond,
 			A2(
 				$elm$core$Basics$composeR,
 				$elm$core$List$unzip,
@@ -8994,9 +9155,9 @@ var $author$project$Nats$handleSub = F3(
 									$elm$core$Basics$composeR,
 									cfg.ports.send,
 									$elm$core$Platform$Cmd$map(cfg.parentMsg))))),
-					function (_v8) {
-						var a = _v8.a;
-						var b = _v8.b;
+					function (_v10) {
+						var a = _v10.a;
+						var b = _v10.b;
 						return A2($elm$core$List$append, a, b);
 					})),
 			A2(
@@ -9019,9 +9180,9 @@ var $author$project$Nats$handleSub = F3(
 							function (socket) {
 								return !_Utils_eq(socket.status, $author$project$Nats$Socket$Closed);
 							},
-							$author$project$Nats$Internal$SocketStateCollection$toList(sockets))))));
-		var finalSockets = _v7.a;
-		var closeCmds = _v7.b;
+							$author$project$Nats$Internal$SocketStateCollection$toList(nextSockets))))));
+		var finalSockets = _v9.a;
+		var closeCmds = _v9.b;
 		return _Utils_Tuple2(
 			$author$project$Nats$State(
 				_Utils_update(
@@ -9030,7 +9191,9 @@ var $author$project$Nats$handleSub = F3(
 			$elm$core$Platform$Cmd$batch(
 				_Utils_ap(
 					cmds,
-					_Utils_ap(opsCmds, closeCmds))));
+					_Utils_ap(
+						opsCmds,
+						_Utils_ap(closeCmds, trackersCmds)))));
 	});
 var $author$project$Nats$Protocol$PUB = function (a) {
 	return {$: 'PUB', a: a};
@@ -9056,47 +9219,6 @@ var $author$project$Nats$Internal$SocketState$addRequest = F3(
 						subject: req.subject
 					})
 				]));
-	});
-var $author$project$Nats$Internal$SocketState$getSubscriptionByMarker = F2(
-	function (reqMarker, state) {
-		return $elm$core$List$head(
-			A2(
-				$elm$core$List$filter,
-				function (sub) {
-					var _v0 = sub.subType;
-					if (_v0.$ === 'Req') {
-						var marker = _v0.a.marker;
-						return _Utils_eq(
-							marker,
-							$elm$core$Maybe$Just(reqMarker));
-					} else {
-						return false;
-					}
-				},
-				state.activeSubscriptions));
-	});
-var $author$project$Nats$Internal$SocketState$cancelRequest = F2(
-	function (marker, state) {
-		var _v0 = A2($author$project$Nats$Internal$SocketState$getSubscriptionByMarker, marker, state);
-		if (_v0.$ === 'Just') {
-			var sub = _v0.a;
-			var newSub = _Utils_update(
-				sub,
-				{subType: $author$project$Nats$Internal$SocketState$Closed});
-			var newKey = $author$project$Nats$Internal$SocketState$subscriptionKey(newSub);
-			var key = $author$project$Nats$Internal$SocketState$subscriptionKey(sub);
-			return _Utils_update(
-				state,
-				{
-					nextSubscriptions: A3(
-						$elm$core$Dict$insert,
-						newKey,
-						newSub,
-						A2($elm$core$Dict$remove, key, state.nextSubscriptions))
-				});
-		} else {
-			return state;
-		}
 	});
 var $author$project$Nats$nextInbox = function (_v0) {
 	var state = _v0.a;
@@ -9259,11 +9381,21 @@ var $author$project$Nats$toCmd = F3(
 						$author$project$Nats$Internal$Types$Config(cfg),
 						s,
 						function (socket) {
-							var newSocket = A2($author$project$Nats$Internal$SocketState$cancelRequest, marker, socket);
+							var _v11 = A2($author$project$Nats$Internal$SocketState$cancelRequest, marker, socket);
+							var newSocket = _v11.a;
+							var msgs = _v11.b;
+							var ops = _v11.c;
 							return _Utils_Tuple3(
 								$elm$core$Maybe$Just(newSocket),
-								_List_Nil,
-								$elm$core$Platform$Cmd$none);
+								msgs,
+								$elm$core$Platform$Cmd$batch(
+									A2(
+										$elm$core$List$map,
+										A2(
+											$author$project$Nats$operationToCmd,
+											$author$project$Nats$Internal$Types$Config(cfg),
+											socket.socket.id),
+										ops)));
 						},
 						oState);
 					var nextState = _v10.a;
@@ -9280,16 +9412,16 @@ var $author$project$Nats$toCmd = F3(
 					A3(
 						$elm$core$List$foldl,
 						F2(
-							function (eff, _v11) {
-								var st = _v11.a;
-								var cmd = _v11.b;
-								var _v12 = A3(
+							function (eff, _v12) {
+								var st = _v12.a;
+								var cmd = _v12.b;
+								var _v13 = A3(
 									$author$project$Nats$toCmd,
 									$author$project$Nats$Internal$Types$Config(cfg),
 									eff,
 									st);
-								var newState = _v12.a;
-								var newCmd = _v12.b;
+								var newState = _v13.a;
+								var newCmd = _v13.b;
 								return _Utils_Tuple2(
 									newState,
 									A2($elm$core$List$cons, newCmd, cmd));

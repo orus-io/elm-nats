@@ -88,19 +88,13 @@ type alias Subscription datatype msg =
     }
 
 
-subscriptionKey : Subscription datatype msg -> ( String, String, String )
+type alias SubscriptionKey =
+    ( String, String, String )
+
+
+subscriptionKey : Subscription datatype msg -> SubscriptionKey
 subscriptionKey sub =
     ( subTypeKey sub.subType, sub.subject, sub.group )
-
-
-isRequest : Subscription datatype msg -> Bool
-isRequest sub =
-    case sub.subType of
-        Req _ ->
-            True
-
-        _ ->
-            False
 
 
 isActiveRequest : Subscription datatype msg -> Bool
@@ -132,7 +126,7 @@ type alias SocketState datatype msg =
     , serverInfo : Maybe Protocol.ServerInfo
     , lastSubID : Int
     , activeSubscriptions : List (Subscription datatype msg)
-    , nextSubscriptions : Dict ( String, String, String ) (Subscription datatype msg)
+    , nextSubscriptions : Dict SubscriptionKey (Subscription datatype msg)
     , activeTrackers : List String
     , nextTrackers : List String
     , time : Int
@@ -259,6 +253,7 @@ addSubscriptionHelper :
     -> SocketState datatype msg
 addSubscriptionHelper subType subject group state =
     let
+        key : SubscriptionKey
         key =
             ( subTypeKey subType, subject, group )
     in
@@ -363,33 +358,31 @@ finalizeTrackers :
     SocketState datatype msg
     -> ( SocketState datatype msg, List msg, List (Protocol.Operation datatype) )
 finalizeTrackers state =
-    let
-        removedTrackers =
+    case state.status of
+        Socket.Connected ->
             state.activeTrackers
                 |> List.filter
+                    -- keep only the trackers that were removed
                     (\marker ->
                         List.filter ((==) marker) state.nextTrackers
                             |> List.isEmpty
                     )
-    in
-    case state.status of
-        Socket.Connected ->
-            List.foldl
-                (\marker ( st, msgs, ops ) ->
-                    let
-                        ( nextSt, nextMsgs, nextOps ) =
-                            cancelRequest marker st
-                    in
-                    ( nextSt, msgs ++ nextMsgs, nextOps ++ ops )
-                )
-                ( { state
-                    | nextTrackers = []
-                    , activeTrackers = state.nextTrackers
-                  }
-                , []
-                , []
-                )
-                removedTrackers
+                |> List.foldl
+                    -- cancel the corresponding requests
+                    (\marker ( st, msgs, ops ) ->
+                        let
+                            ( nextSt, nextMsgs, nextOps ) =
+                                cancelRequest marker st
+                        in
+                        ( nextSt, msgs ++ nextMsgs, nextOps ++ ops )
+                    )
+                    ( { state
+                        | nextTrackers = []
+                        , activeTrackers = state.nextTrackers
+                      }
+                    , []
+                    , []
+                    )
 
         _ ->
             ( state, [], [] )
@@ -435,8 +428,8 @@ addRequest (Config cfg) req state =
 
 cancelRequest :
     String
-    -> SocketState datetype msg
-    -> ( SocketState datetype msg, List msg, List (Protocol.Operation datatype) )
+    -> SocketState datatype msg
+    -> ( SocketState datatype msg, List msg, List (Protocol.Operation datatype) )
 cancelRequest marker state =
     case
         getSubscriptionByMarker marker state
@@ -445,12 +438,15 @@ cancelRequest marker state =
             case sub.subType of
                 Req request ->
                     let
+                        key : SubscriptionKey
                         key =
                             subscriptionKey sub
 
+                        newSub : Subscription datatype msg
                         newSub =
                             { sub | state = SubscriptionCanceled }
 
+                        newKey : SubscriptionKey
                         newKey =
                             subscriptionKey newSub
                     in
@@ -635,6 +631,7 @@ receiveOperation cfg operation state =
                         nextState : SocketState datatype msg
                         nextState =
                             let
+                                key : SubscriptionKey
                                 key =
                                     subscriptionKey sub
                             in
@@ -660,9 +657,11 @@ receiveOperation cfg operation state =
 
                             else
                                 let
+                                    newSub : Subscription datatype msg
                                     newSub =
                                         { sub | state = SubscriptionClosed }
 
+                                    newKey : SubscriptionKey
                                     newKey =
                                         subscriptionKey newSub
                                 in
